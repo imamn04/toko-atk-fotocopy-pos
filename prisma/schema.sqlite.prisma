@@ -1,0 +1,76 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String        @id @default(cuid())
+  name         String
+  username     String        @unique
+  password     String
+  role         String        @default("KARYAWAN")
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  transactions Transaction[]
+}
+
+model Category {
+  id        String    @id @default(cuid())
+  name      String    @unique
+  products  Product[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+}
+
+model Product {
+  id               String            @id @default(cuid())
+  sku              String            @unique
+  barcode          String            @unique
+  name             String
+  categoryId       String
+  category         Category          @relation(fields: [categoryId], references: [id])
+  costPrice        Float
+  sellingPrice     Float
+  stock            Int               @default(0)
+  minStock         Int               @default(5)
+  isActive         Boolean           @default(true)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  transactionItems TransactionItem[]
+
+  @@index([barcode])
+  @@index([name])
+}
+
+model Transaction {
+  id            String            @id @default(cuid())
+  invoiceNumber String            @unique
+  cashierId     String
+  cashier       User              @relation(fields: [cashierId], references: [id])
+  totalAmount   Float
+  totalCost     Float
+  cashPaid      Float
+  changeDue     Float
+  paymentMethod String            @default("CASH")
+  createdAt     DateTime          @default(now())
+  items         TransactionItem[]
+
+  @@index([invoiceNumber])
+  @@index([createdAt])
+}
+
+model TransactionItem {
+  id            String      @id @default(cuid())
+  transactionId String
+  transaction   Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  productId     String
+  product       Product     @relation(fields: [productId], references: [id])
+  qty           Int
+  costPrice     Float
+  sellingPrice  Float
+  subtotal      Float
+}
