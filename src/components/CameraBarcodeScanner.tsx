@@ -1,8 +1,8 @@
 "use client";
 
 import React, { useEffect, useRef, useState, useCallback } from "react";
-import { Html5Qrcode, Html5QrcodeSupportedFormats } from "html5-qrcode";
-import { X, Camera, RefreshCw, AlertCircle, Sparkles, CheckCircle2 } from "lucide-react";
+import { Html5Qrcode } from "html5-qrcode";
+import { X, Camera, RefreshCw, AlertCircle, Sparkles, CheckCircle2, ArrowRight } from "lucide-react";
 import { playBeepSound } from "@/lib/sound";
 
 interface CameraBarcodeScannerProps {
@@ -20,22 +20,25 @@ export default function CameraBarcodeScanner({
   const [cameras, setCameras] = useState<{ id: string; label: string }[]>([]);
   const [selectedCameraId, setSelectedCameraId] = useState<string>("");
   const [scannedCode, setScannedCode] = useState<string | null>(null);
+  const [manualInput, setManualInput] = useState<string>("");
+  const [scannerReady, setScannerReady] = useState(false);
+
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const isRunningRef = useRef<boolean>(false);
   const lastScannedTimeRef = useRef<number>(0);
 
-  // Callback penanganan scan sukses
+  // Penanganan saat barcode berhasil terdeteksi
   const handleDecoded = useCallback(
     (decodedText: string) => {
       const now = Date.now();
-      // Debounce 1.5 detik agar tidak men-scan dobel bertubi-tubi
+      // Debounce 1.5 detik agar tidak ter-scan berulang-ulang
       if (now - lastScannedTimeRef.current < 1500) return;
       lastScannedTimeRef.current = now;
 
-      // Haptic feedback & efek suara scanner kasir
+      // Haptic getar HP & bunyi beep kasir
       if (typeof window !== "undefined" && "vibrate" in navigator) {
         try {
-          navigator.vibrate(80);
+          navigator.vibrate(100);
         } catch {
           // ignore
         }
@@ -46,7 +49,7 @@ export default function CameraBarcodeScanner({
 
       setTimeout(() => {
         onScanSuccess(decodedText);
-      }, 350);
+      }, 400);
     },
     [onScanSuccess]
   );
@@ -61,6 +64,7 @@ export default function CameraBarcodeScanner({
       try {
         setErrorMessage(null);
         setScannedCode(null);
+        setScannerReady(false);
 
         const devices = await Html5Qrcode.getCameras();
         if (isCancelled) return;
@@ -68,71 +72,50 @@ export default function CameraBarcodeScanner({
         if (devices && devices.length > 0) {
           setCameras(devices);
 
-          // PILIH KAMERA TERBAIK:
-          // Di iPhone / Android multi-kamera, hindari kamera "telephoto" / "tele" / "ultra-wide"
-          // karena telephoto tidak bisa fokus dekat pada barcode. Pilih kamera "wide" / "main" / kamera belakang utama.
-          let bestCam = devices[0].id;
-          const wideOrBackCam = devices.find((d) => {
+          // Coba temukan kamera belakang utama
+          const backCam = devices.find((d) => {
             const lbl = (d.label || "").toLowerCase();
             return (
               (lbl.includes("back") || lbl.includes("belakang") || lbl.includes("wide") || lbl.includes("0")) &&
               !lbl.includes("tele") &&
               !lbl.includes("ultra")
             );
-          });
+          }) || devices[devices.length - 1];
 
-          if (wideOrBackCam) {
-            bestCam = wideOrBackCam.id;
-          } else {
-            // Fallback kamera belakang terakhir jika tidak ada nama
-            bestCam = devices[devices.length - 1].id;
-          }
-
-          setSelectedCameraId(bestCam);
+          setSelectedCameraId(backCam.id);
 
           html5QrCode = new Html5Qrcode("camera-scanner-view", {
-            formatsToSupport: [
-              Html5QrcodeSupportedFormats.EAN_13,
-              Html5QrcodeSupportedFormats.CODE_128,
-              Html5QrcodeSupportedFormats.EAN_8,
-              Html5QrcodeSupportedFormats.UPC_A,
-              Html5QrcodeSupportedFormats.UPC_E,
-              Html5QrcodeSupportedFormats.CODE_39,
-              Html5QrcodeSupportedFormats.QR_CODE,
-            ],
             verbose: false,
-            experimentalFeatures: {
-              useBarCodeDetectorIfSupported: true, // Gunakan hardware detector native browser (iOS Safari / Chrome)
-            },
+            // JANGAN gunakan useBarCodeDetectorIfSupported di iOS Safari karena melempar TypeError pada 1D barcode
           });
 
           scannerRef.current = html5QrCode;
 
+          // Gunakan camera ID atau facingMode: environment
+          const cameraConfig = backCam?.id ? backCam.id : { facingMode: "environment" };
+
           await html5QrCode.start(
-            bestCam,
+            cameraConfig,
             {
-              fps: 20,
-              qrbox: (viewfinderWidth, viewfinderHeight) => {
-                // Kotak bidik fleksibel: lebar 85%, tinggi 55% untuk membaca barcode 1D garis
-                const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
-                return {
-                  width: Math.min(Math.floor(viewfinderWidth * 0.88), 340),
-                  height: Math.min(Math.floor(minEdge * 0.6), 200),
-                };
-              },
+              fps: 12, // 12 FPS optimal untuk decoding tanpa memberatkan CPU mobile
+              // Tidak menggunakan qrbox ketat agar full-frame dipindai (quiet zone tidak terpotong)
               aspectRatio: 1.333333,
             },
             (text) => handleDecoded(text),
-            () => {} // Abaikan frame kosong
+            () => {} // Abaikan frame kosong saat mengamati
           );
-          isRunningRef.current = true;
+
+          if (!isCancelled) {
+            isRunningRef.current = true;
+            setScannerReady(true);
+          }
         } else {
-          setErrorMessage("Tidak ada perangkat kamera yang terdeteksi di laptop/HP Anda.");
+          setErrorMessage("Tidak ada perangkat kamera yang terdeteksi di perangkat Anda.");
         }
       } catch (err: unknown) {
         if (isCancelled) return;
         const msg = err instanceof Error ? err.message : "Gagal mengaktifkan kamera";
-        setErrorMessage("Izin kamera belum aktif atau sedang digunakan aplikasi lain: " + msg);
+        setErrorMessage("Izin kamera ditolak atau sedang digunakan aplikasi lain: " + msg);
       }
     }
 
@@ -157,41 +140,45 @@ export default function CameraBarcodeScanner({
     setSelectedCameraId(newCamId);
     if (scannerRef.current && isRunningRef.current) {
       try {
+        setScannerReady(false);
         await scannerRef.current.stop();
         await scannerRef.current.start(
           newCamId,
           {
-            fps: 20,
-            qrbox: (viewfinderWidth, viewfinderHeight) => {
-              const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
-              return {
-                width: Math.min(Math.floor(viewfinderWidth * 0.88), 340),
-                height: Math.min(Math.floor(minEdge * 0.6), 200),
-              };
-            },
+            fps: 12,
             aspectRatio: 1.333333,
           },
           (text) => handleDecoded(text),
           () => {}
         );
+        setScannerReady(true);
       } catch (e) {
         console.warn("Gagal beralih kamera:", e);
       }
     }
   };
 
+  // Submit barcode manual dari modal
+  const handleManualSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!manualInput.trim()) return;
+    playBeepSound();
+    onScanSuccess(manualInput.trim());
+    setManualInput("");
+  };
+
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-slate-950/85 backdrop-blur-md flex items-center justify-center z-50 p-4">
+    <div className="fixed inset-0 bg-slate-950/85 backdrop-blur-md flex items-center justify-center z-50 p-3 sm:p-4">
       <div className="bg-slate-900 w-full max-w-md rounded-3xl shadow-2xl border border-slate-700/60 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
         {/* Style Animasi Laser Bergerak */}
         <style dangerouslySetInnerHTML={{
           __html: `
             @keyframes sweepLaser {
-              0% { top: 12%; opacity: 0.9; }
-              50% { top: 88%; opacity: 1; }
-              100% { top: 12%; opacity: 0.9; }
+              0% { top: 15%; opacity: 0.9; }
+              50% { top: 85%; opacity: 1; }
+              100% { top: 15%; opacity: 0.9; }
             }
             .animate-laser-sweep {
               animation: sweepLaser 2s ease-in-out infinite;
@@ -200,14 +187,16 @@ export default function CameraBarcodeScanner({
         }} />
 
         {/* Header Modal */}
-        <div className="bg-slate-950/80 px-5 py-4 flex items-center justify-between border-b border-slate-800">
+        <div className="bg-slate-950/90 px-4 sm:px-5 py-3.5 flex items-center justify-between border-b border-slate-800">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-xl bg-blue-500/20 text-blue-400 flex items-center justify-center border border-blue-500/30">
               <Camera className="w-4 h-4" />
             </div>
             <div>
-              <h3 className="font-extrabold text-sm text-white">Pemindai Barcode Kamera</h3>
-              <p className="text-[11px] text-slate-400">Arahkan barcode fisik tepat di garis laser pemindai</p>
+              <h3 className="font-extrabold text-sm text-white">Pemindai Barcode Kamera HP</h3>
+              <p className="text-[11px] text-slate-400">
+                {scannerReady ? "Kamera Aktif • Arahkan ke Barcode" : "Menghubungkan ke Lensa Kamera..."}
+              </p>
             </div>
           </div>
           <button
@@ -227,21 +216,21 @@ export default function CameraBarcodeScanner({
             {/* Kotak Bidik Target & Garis Laser Bergerak */}
             <div className="absolute inset-4 pointer-events-none flex flex-col items-center justify-center">
               {/* Sudut-sudut Target Bidik (Reticle Corner) */}
-              <div className="absolute top-2 left-2 w-6 h-6 border-t-4 border-l-4 border-emerald-400 rounded-tl-lg" />
-              <div className="absolute top-2 right-2 w-6 h-6 border-t-4 border-r-4 border-emerald-400 rounded-tr-lg" />
-              <div className="absolute bottom-2 left-2 w-6 h-6 border-b-4 border-l-4 border-emerald-400 rounded-bl-lg" />
-              <div className="absolute bottom-2 right-2 w-6 h-6 border-b-4 border-r-4 border-emerald-400 rounded-br-lg" />
+              <div className="absolute top-2 left-2 w-7 h-7 border-t-4 border-l-4 border-emerald-400 rounded-tl-lg" />
+              <div className="absolute top-2 right-2 w-7 h-7 border-t-4 border-r-4 border-emerald-400 rounded-tr-lg" />
+              <div className="absolute bottom-2 left-2 w-7 h-7 border-b-4 border-l-4 border-emerald-400 rounded-bl-lg" />
+              <div className="absolute bottom-2 right-2 w-7 h-7 border-b-4 border-r-4 border-emerald-400 rounded-br-lg" />
 
               {/* Garis Laser Bergerak Naik Turun */}
-              <div className="absolute inset-x-3 h-0.5 bg-gradient-to-r from-transparent via-rose-500 to-transparent shadow-[0_0_12px_#f43f5e] animate-laser-sweep">
+              <div className="absolute inset-x-3 h-0.5 bg-gradient-to-r from-transparent via-rose-500 to-transparent shadow-[0_0_14px_#f43f5e] animate-laser-sweep">
                 <div className="w-full h-full bg-rose-400 blur-xs" />
               </div>
 
               {/* Status Sukses Scan */}
               {scannedCode && (
-                <div className="absolute inset-0 bg-emerald-500/30 backdrop-blur-xs flex items-center justify-center animate-in zoom-in-75 duration-150">
-                  <div className="px-4 py-2 bg-emerald-600 text-white rounded-xl shadow-xl flex items-center gap-2 font-mono font-black text-sm">
-                    <CheckCircle2 className="w-5 h-5 text-white" />
+                <div className="absolute inset-0 bg-emerald-600/60 backdrop-blur-xs flex items-center justify-center animate-in zoom-in-75 duration-150">
+                  <div className="px-5 py-2.5 bg-white text-emerald-900 rounded-2xl shadow-2xl flex items-center gap-2 font-mono font-black text-sm border-2 border-emerald-400">
+                    <CheckCircle2 className="w-5 h-5 text-emerald-600" />
                     <span>{scannedCode}</span>
                   </div>
                 </div>
@@ -262,7 +251,7 @@ export default function CameraBarcodeScanner({
               <RefreshCw className="w-3.5 h-3.5 text-slate-400 shrink-0" />
               <div className="flex-1">
                 <label className="text-[10px] text-slate-400 block font-semibold mb-0.5">
-                  Pilih Lensa Kamera (Gunakan Kamera Belakang Biasa / Wide):
+                  Lensa Kamera: (Ganti jika buram saat didekatkan)
                 </label>
                 <select
                   value={selectedCameraId}
@@ -279,15 +268,34 @@ export default function CameraBarcodeScanner({
             </div>
           )}
 
+          {/* Form Input Manual Darurat (Anti-Gagal Jika Layar Monitor Silau) */}
+          <form onSubmit={handleManualSubmit} className="mt-3 w-full flex items-center gap-2 bg-slate-950/70 p-2 rounded-xl border border-slate-800">
+            <input
+              type="text"
+              placeholder="Atau ketik/paste barcode di sini..."
+              value={manualInput}
+              onChange={(e) => setManualInput(e.target.value)}
+              className="flex-1 bg-slate-800 text-white text-xs px-3 py-2 rounded-lg border border-slate-700 focus:outline-none focus:border-emerald-500 font-mono font-bold placeholder:text-slate-500"
+            />
+            <button
+              type="submit"
+              disabled={!manualInput.trim()}
+              className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white text-xs font-bold rounded-lg transition flex items-center gap-1 shrink-0"
+            >
+              <span>Input</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+          </form>
+
           {/* Tips Pemindaian Barcode */}
-          <div className="mt-3 text-[11px] text-slate-400 flex items-center gap-1.5 w-full bg-slate-800/40 p-2 rounded-xl">
+          <div className="mt-2.5 text-[11px] text-slate-400 flex items-center gap-1.5 w-full bg-slate-800/40 p-2 rounded-xl">
             <Sparkles className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-            <span>Posisikan barcode sejajar horizontal pada garis laser merah, jarak 10–20 cm dari lensa.</span>
+            <span>Tips: Beri jarak 15–25 cm. Jika memotret layar monitor, kurangi kecerahan monitor agar tidak silau/pantul.</span>
           </div>
         </div>
 
         {/* Footer Modal */}
-        <div className="px-5 py-3.5 bg-slate-950/90 border-t border-slate-800 flex items-center justify-between text-xs text-slate-400">
+        <div className="px-5 py-3 bg-slate-950/90 border-t border-slate-800 flex items-center justify-between text-xs text-slate-400">
           <span className="font-mono text-[11px]">EAN-13 • CODE-128 • QR</span>
           <button
             type="button"
