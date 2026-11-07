@@ -1,0 +1,83 @@
+version: '3.8'
+
+services:
+  # ==========================================
+  # 1. DATABASE MYSQL 8.0
+  # ==========================================
+  db:
+    image: mysql:8.0
+    container_name: devos_pos_db
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-RootDevos2026!}
+      MYSQL_DATABASE: devos_pos
+      MYSQL_USER: pos_user
+      MYSQL_PASSWORD: ${DB_PASSWORD:-SuperDevos2026!}
+    volumes:
+      - mysql_data:/var/lib/mysql
+    command: >
+      --default-authentication-plugin=mysql_native_password
+      --character-set-server=utf8mb4
+      --collation-server=utf8mb4_unicode_ci
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "pos_user", "-p${DB_PASSWORD:-SuperDevos2026!}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - pos_network
+
+  # ==========================================
+  # 2. NEXT.JS 16 POS APPLICATION
+  # ==========================================
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: devos_pos_app
+    restart: always
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      HOSTNAME: "0.0.0.0"
+      DATABASE_URL: mysql://pos_user:${DB_PASSWORD:-SuperDevos2026!}@db:3306/devos_pos
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:-devos-super-secret-atk-jwt-token-production-2026}
+    expose:
+      - "3000"
+    networks:
+      - pos_network
+
+  # ==========================================
+  # 3. REVERSE PROXY & AUTO SSL (CADDY)
+  # ==========================================
+  caddy:
+    image: caddy:2-alpine
+    container_name: devos_pos_caddy
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp" # HTTP/3 Quic
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - app
+    networks:
+      - pos_network
+
+volumes:
+  mysql_data:
+    driver: local
+  caddy_data:
+    driver: local
+  caddy_config:
+    driver: local
+
+networks:
+  pos_network:
+    driver: bridge

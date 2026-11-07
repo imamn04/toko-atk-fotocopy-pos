@@ -188,6 +188,39 @@ export default function BarcodeGenerator({
     URL.revokeObjectURL(url);
   };
 
+  // Unduh Barcode sebagai Gambar PNG (Resolusi Tinggi)
+  const handleDownloadPng = () => {
+    if (!svgRef.current) return;
+    try {
+      const svgData = new XMLSerializer().serializeToString(svgRef.current);
+      const svgBlob = new Blob([svgData], { type: "image/svg+xml;charset=utf-8" });
+      const url = URL.createObjectURL(svgBlob);
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        const scale = 3; // Skala 3x agar tajam saat dicetak/disimpan
+        canvas.width = (img.width || 300) * scale;
+        canvas.height = (img.height || 120) * scale;
+        const ctx = canvas.getContext("2d");
+        if (ctx) {
+          ctx.fillStyle = "#ffffff";
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          const pngUrl = canvas.toDataURL("image/png");
+          const downloadLink = document.createElement("a");
+          downloadLink.href = pngUrl;
+          downloadLink.download = `barcode-${barcode || "product"}.png`;
+          downloadLink.click();
+        }
+        URL.revokeObjectURL(url);
+      };
+      img.src = url;
+    } catch (e) {
+      console.error("Gagal convert PNG:", e);
+      handleDownloadSvg();
+    }
+  };
+
   const displayError = isBarcodeEmpty ? "Kode barcode kosong." : renderError;
 
   return (
@@ -256,18 +289,29 @@ export default function BarcodeGenerator({
         <div className="flex items-center gap-2">
           <button
             type="button"
+            onClick={handleDownloadPng}
+            disabled={!barcode || !!displayError}
+            className="flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 disabled:opacity-50 rounded-lg transition"
+            title="Unduh file gambar PNG untuk disimpan atau dimasukkan ke file"
+          >
+            <Download className="w-3.5 h-3.5" />
+            Unduh PNG
+          </button>
+          <button
+            type="button"
             onClick={handleDownloadSvg}
             disabled={!barcode || !!displayError}
             className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 disabled:opacity-50 rounded-lg transition"
+            title="Unduh file vektor SVG"
           >
             <Download className="w-3.5 h-3.5" />
-            Unduh SVG
+            SVG
           </button>
           <button
             type="button"
             onClick={handlePrintLabel}
             disabled={!barcode || !!displayError}
-            className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 rounded-lg shadow-sm transition"
+            className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 rounded-lg shadow-sm transition"
           >
             <Printer className="w-3.5 h-3.5" />
             Cetak Label Stiker

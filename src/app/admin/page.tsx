@@ -25,7 +25,8 @@ import {
   Trash2,
   PieChart as PieIcon,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  QrCode
 } from "lucide-react";
 import {
   ComposedChart,
@@ -994,7 +995,17 @@ export default function AdminPage() {
                                 {p.category.name}
                               </span>
                             </td>
-                            <td className="py-3 px-4 font-mono font-bold text-slate-900 whitespace-nowrap">{p.barcode}</td>
+                            <td className="py-3 px-4 whitespace-nowrap">
+                              <button
+                                type="button"
+                                onClick={() => setSelectedProductForBarcode(p)}
+                                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-100 hover:bg-blue-50 text-slate-800 hover:text-blue-700 transition border border-slate-300 font-mono font-bold text-xs group shadow-2xs"
+                                title="Klik untuk lihat gambar barcode & unduh PNG / cetak stiker"
+                              >
+                                <QrCode className="w-3.5 h-3.5 text-slate-500 group-hover:text-blue-600" />
+                                <span>{p.barcode}</span>
+                              </button>
+                            </td>
                             <td className="py-3 px-4 text-right text-slate-700 font-semibold whitespace-nowrap">
                               Rp {p.costPrice.toLocaleString("id-ID")}
                             </td>

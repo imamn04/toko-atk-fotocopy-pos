@@ -6,7 +6,10 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "db:mysql": "node scripts/prepare-db.js mysql && npx prisma generate",
+    "db:sqlite": "node scripts/prepare-db.js sqlite && npx prisma generate",
+    "db:seed": "node scripts/seed-db.js"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",

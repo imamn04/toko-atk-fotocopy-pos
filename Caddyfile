@@ -1,0 +1,18 @@
+{
+    email admin@shopku.my.id
+}
+
+shopku.my.id, www.shopku.my.id {
+    reverse_proxy app:3000
+
+    # Kompresi otomatis gzip & zstd
+    encode gzip zstd
+
+    # Header keamanan web
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "SAMEORIGIN"
+        Referrer-Policy "strict-origin-when-cross-origin"
+    }
+}
