@@ -23,3 +23,4 @@ esac
 
 echo "=== Menjalankan Server POS Toko ATK (Port: $PORT) ==="
 exec node server.js
+

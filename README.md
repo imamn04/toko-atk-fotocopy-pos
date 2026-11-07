@@ -1,36 +1,87 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Devos POS - Sistem Kasir & Inventaris Toko ATK & Fotocopy
 
-## Getting Started
+Aplikasi Point of Sale (POS) dan Manajemen Stok modern untuk toko Alat Tulis Kantor (ATK) dan layanan Jasa Fotocopy & Percetakan. Dibangun dengan **Next.js 16 (App Router)**, **Tailwind CSS**, **Prisma ORM**, **MySQL 8.0**, dan **Caddy (Auto HTTPS SSL)**.
 
-First, run the development server:
+---
+
+## 🌟 Fitur Utama
+
+- **Layar Kasir (POS):**
+  - Pemindaian cepat dengan Barcode Scanner USB & Kamera HP.
+  - Shortcut keyboard kasir standar ritel (`F2`, `F4`, `F8`, `F9`, `F12`).
+  - Fitur Tahan & Panggil Struk Belanja (*Hold Orders*).
+  - Cetak struk belanja thermal (58mm / 80mm) & QRIS bayar.
+- **Backoffice Owner / Admin:**
+  - Manajemen master data produk ATK & varian jasa fotocopy/jilid/laminating.
+  - Auto-generate barcode 13 digit (EAN13/CODE128).
+  - Preview & Unduh gambar barcode (**PNG Resolusi Tinggi** & **SVG Vektor**).
+  - Cetak label stiker barcode siap tempel di rak atau kemasan barang.
+  - Peringatan stok kritis (*low stock alert*) & restock instan.
+  - Grafik omzet & laba berkala + ekspor laporan ke Excel (.xlsx) dan PDF A4.
+- **Keamanan & Multi-Role (RBAC):**
+  - Role **Owner (Admin)**: Akses penuh ke master data, laporan laba, dan manajemen karyawan.
+  - Role **Kasir**: Terisolasi hanya untuk layar kasir penjualan, tidak bisa melihat modal/HPP dan keuntungan toko.
+  - Touchscreen PIN Keypad (PIN Cepat `1234`) dan Keyboard form login.
+
+---
+
+## 🚀 Panduan Deployment VPS Ubuntu (Docker Compose)
+
+### 1. Setting DNS Domain (`shopku.my.id`)
+Buka panel DNS management domain Anda (misal di Sumopod), tambahkan **2 A-Record**:
+- **Host:** `@` ➔ **Target:** `[IP Publik VPS Ubuntu Anda]`
+- **Host:** `www` ➔ **Target:** `[IP Publik VPS Ubuntu Anda]`
+
+---
+
+### 2. Jalankan di Server VPS Ubuntu
+
+Masuk ke terminal VPS Anda (misal di `/var/www/TokoATK`):
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+# 1. Pastikan izin akses folder
+sudo chown -R $USER:$USER /var/www/TokoATK
+cd /var/www/TokoATK
+
+# 2. Clone repository ke folder ini
+git clone https://github.com/imamn04/toko-atk-fotocopy-pos.git .
+
+# 3. Salin environment produksi
+cp .env.production .env
+
+# 4. Jalankan aplikasi dengan Docker Compose
+docker compose up -d --build
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### 3. Selesai!
+- Caddy akan otomatis mengurus sertifikat **SSL Gratis (HTTPS)** ke Let's Encrypt.
+- Buka browser di **`https://shopku.my.id`**.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+---
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## 🔐 Akun Default Sistem
 
-## Learn More
+| Role | Username | Password | PIN Cepat |
+| :--- | :--- | :--- | :--- |
+| **Owner (Admin)** | `admin` | `admin123` | `1234` |
+| **Kasir** | `kasir` | `kasir123` | `1234` |
 
-To learn more about Next.js, take a look at the following resources:
+---
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## 💻 Jalankan Lokal (Development)
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Jika ingin menjalankan aplikasi secara lokal di komputer laptop/PC:
 
-## Deploy on Vercel
+```bash
+# Install dependencies
+npm install
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+# Setup database lokal SQLite
+npm run db:sqlite
+npx prisma db push
+npm run db:seed
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+# Jalankan server development
+npm run dev
+```
+Akses di: `http://localhost:3000`

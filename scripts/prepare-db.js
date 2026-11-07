@@ -23,3 +23,4 @@ if (target === "mysql") {
 }
 
 fs.writeFileSync(schemaPath, content, "utf8");
+
