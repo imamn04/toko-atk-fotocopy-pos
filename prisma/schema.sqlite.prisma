@@ -74,3 +74,4 @@ model TransactionItem {
   sellingPrice  Float
   subtotal      Float
 }
+

@@ -1787,19 +1787,6 @@ export default function AdminPage() {
                   </select>
                 </div>
 
-                {/* Kode SKU */}
-                <div>
-                  <label className="text-xs font-extrabold text-slate-800 uppercase tracking-wider block mb-1">
-                    SKU Barang (Opsional)
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="Auto: ATK-XXXX"
-                    value={formData.sku}
-                    onChange={(e) => setFormData({ ...formData, sku: e.target.value })}
-                    className="w-full px-3.5 py-2.5 text-sm font-bold text-slate-900 placeholder:text-slate-400 bg-white border-2 border-slate-300 rounded-xl focus:outline-none focus:border-emerald-600"
-                  />
-                </div>
 
                 {/* Harga Beli Modal (HPP) */}
                 <div>

@@ -229,6 +229,11 @@ export default function PosPage() {
   // Ref input scanner agar selalu auto-focus
   const barcodeInputRef = useRef<HTMLInputElement | null>(null);
 
+  // Buffer deteksi hardware USB Barcode Scanner (HID keyboard stream)
+  const usbScanBufferRef = useRef<string>("");
+  const lastScanKeyTimeRef = useRef<number>(0);
+  const handleBarcodeLookupRef = useRef<((code: string) => Promise<void>) | null>(null);
+
   // Periksa sesi login kasir
   useEffect(() => {
     async function checkAuth() {
@@ -361,31 +366,86 @@ export default function PosPage() {
     };
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "F2") {
+      const key = e.key;
+      const code = e.code;
+
+      // 1. Tangani tombol fungsi F-Keys (F2, F4, F8, F9, F12) & Escape
+      if (key === "F2" || code === "F2") {
         e.preventDefault();
         barcodeInputRef.current?.focus();
-      } else if (e.key === "F4") {
+        barcodeInputRef.current?.select();
+        notify("Scanner Barcode Aktif (Siap Scan / Ketik)", "info");
+        return;
+      }
+      if (key === "F4" || code === "F4") {
         e.preventDefault();
         if (cart.length > 0) {
           handleHoldCurrentOrder();
+        } else if (heldOrders.length > 0) {
+          setShowHeldOrdersModal(true);
+        } else {
+          notify("Tidak ada antrean pesanan untuk ditahan.", "info");
         }
-      } else if (e.key === "F8") {
+        return;
+      }
+      if (key === "F8" || code === "F8") {
         e.preventDefault();
         setShowDiscountInput((prev) => !prev);
-      } else if (e.key === "F9") {
+        notify("Kolom diskon dibuka di panel kasir", "info");
+        return;
+      }
+      if (key === "F9" || code === "F9") {
         e.preventDefault();
         setShowCameraScanner((prev) => !prev);
-      } else if (e.key === "F12") {
+        return;
+      }
+      if (key === "F12" || code === "F12") {
         e.preventDefault();
         if (cart.length > 0) {
           handleOpenPayment();
+        } else {
+          notify("Keranjang masih kosong! Silakan scan barang terlebih dahulu.", "info");
         }
-      } else if (e.key === "Escape") {
+        return;
+      }
+      if (key === "Escape" || code === "Escape") {
         setShowPaymentModal(false);
         setShowHeldOrdersModal(false);
         setShowCameraScanner(false);
         setCompletedTx(null);
         focusScanner();
+        return;
+      }
+
+      // 2. Global Hardware USB Barcode Scanner Detection (HID Keystroke Stream)
+      // Scanner USB fisik mengetik rangkaian karakter sangat cepat (< 60ms) lalu diakhiri 'Enter'.
+      const target = e.target as HTMLElement;
+      const isInput = target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable);
+
+      // Jika bukan sedang mengetik di form modal input lain
+      if (!isInput || target === barcodeInputRef.current) {
+        const now = Date.now();
+        const diff = now - lastScanKeyTimeRef.current;
+        lastScanKeyTimeRef.current = now;
+
+        if (key === "Enter") {
+          const buffer = usbScanBufferRef.current.trim();
+          if (buffer.length >= 3) {
+            e.preventDefault();
+            usbScanBufferRef.current = "";
+            if (handleBarcodeLookupRef.current) {
+              handleBarcodeLookupRef.current(buffer);
+            }
+            return;
+          }
+          usbScanBufferRef.current = "";
+        } else if (key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+          // Jika interval lebih dari 80ms, anggap manusia mengetik biasa -> reset buffer
+          if (diff > 80) {
+            usbScanBufferRef.current = "";
+          }
+          usbScanBufferRef.current += key;
+        }
       }
     };
 
@@ -518,6 +578,8 @@ export default function PosPage() {
     e.preventDefault();
     await handleBarcodeLookup(barcodeInput);
   };
+
+  handleBarcodeLookupRef.current = handleBarcodeLookup;
 
   // Pulihkan Transaksi yang Ditahan
   const handleRestoreHeldOrder = (order: HeldOrder) => {
@@ -997,9 +1059,14 @@ export default function PosPage() {
             {/* F12: Bayar Kasir */}
             <button
               type="button"
-              onClick={handleOpenPayment}
-              disabled={cart.length === 0}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white transition active:scale-95 font-black text-xs shadow-sm shadow-emerald-600/25 ml-auto"
+              onClick={() => {
+                if (cart.length > 0) {
+                  handleOpenPayment();
+                } else {
+                  notify("Keranjang masih kosong! Silakan scan barang atau klik produk terlebih dahulu.", "info");
+                }
+              }}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white transition active:scale-95 font-black text-xs shadow-sm shadow-emerald-600/25 ml-auto"
               title="Klik atau tekan F12 untuk proses pembayaran kasir"
             >
               <kbd className="px-1.5 py-0.5 bg-emerald-800/80 rounded font-mono text-[10px] text-emerald-200 font-black">F12</kbd>
@@ -1208,9 +1275,14 @@ export default function PosPage() {
               {/* Tombol Bayar Sekarang */}
               <button
                 type="button"
-                onClick={handleOpenPayment}
-                disabled={cart.length === 0}
-                className="py-3 px-6 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white font-extrabold text-sm rounded-xl shadow-md shadow-emerald-600/20 flex items-center gap-2 transition"
+                onClick={() => {
+                  if (cart.length > 0) {
+                    handleOpenPayment();
+                  } else {
+                    notify("Keranjang masih kosong! Silakan scan barang atau klik produk terlebih dahulu.", "info");
+                  }
+                }}
+                className="py-3 px-6 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-extrabold text-sm rounded-xl shadow-md shadow-emerald-600/20 flex items-center gap-2 transition active:scale-95 cursor-pointer"
               >
                 <CreditCard className="w-5 h-5" />
                 <span>Bayar (F12)</span>
