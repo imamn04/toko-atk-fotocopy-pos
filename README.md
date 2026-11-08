@@ -1,6 +1,6 @@
-# Devos POS - Sistem Kasir & Inventaris Toko ATK & Fotocopy
+# FOCUS MARAJA POS - Sistem Kasir & Inventaris Fotokopi, ATK & Studio
 
-Aplikasi Point of Sale (POS) dan Manajemen Stok modern untuk toko Alat Tulis Kantor (ATK) dan layanan Jasa Fotocopy & Percetakan. Dibangun dengan **Next.js 16 (App Router)**, **Tailwind CSS**, **Prisma ORM**, **MySQL 8.0**, dan **Caddy (Auto HTTPS SSL)**.
+Aplikasi Point of Sale (POS) dan Manajemen Stok modern untuk **FOCUS MARAJA** (Fotokopi – ATK – Studio). Dibangun dengan **Next.js 16 (App Router)**, **Tailwind CSS**, **Prisma ORM**, **MySQL 8.0**, dan **Nginx Reverse Proxy**.
 
 ---
 

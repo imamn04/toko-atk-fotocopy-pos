@@ -16,7 +16,7 @@ export default function BarcodeGenerator({
   barcode,
   productName = "Produk ATK",
   sellingPrice = 0,
-  storeName = "DEVOS ATK & FOTOCOPY",
+  storeName = "FOCUS MARAJA",
   onGenerateRandom,
 }: BarcodeGeneratorProps) {
   const svgRef = useRef<SVGSVGElement | null>(null);

@@ -673,17 +673,19 @@ export default function AdminPage() {
       {/* Top Navbar Admin - Bersih & Ritel Modern */}
       <header className="bg-white border-b border-slate-200 px-4 sm:px-6 py-3 flex flex-wrap sm:flex-nowrap items-center justify-between gap-3 shadow-xs sticky top-0 z-40">
         <div className="flex items-center gap-3">
-          <div className="bg-emerald-600 p-2 rounded-xl shrink-0 shadow-xs">
-            <Package className="w-5 h-5 text-white" />
-          </div>
+          <img
+            src="/brand/logo-white-bg.png"
+            alt="FOCUS MARAJA"
+            className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl object-contain bg-white border border-slate-200 p-0.5 shadow-xs shrink-0"
+          />
           <div>
             <h1 className="text-sm sm:text-base font-black leading-tight text-slate-900 flex items-center gap-2">
-              DEVOS ATK BACKOFFICE
-              <span className="text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full font-bold">
+              FOCUS MARAJA BACKOFFICE
+              <span className="text-[10px] bg-slate-900 text-white px-2 py-0.5 rounded-full font-bold">
                 PORTAL PEMILIK
               </span>
             </h1>
-            <p className="text-[11px] sm:text-xs text-slate-500">Master Data, Barcode, Karyawan &amp; Laporan Keuangan</p>
+            <p className="text-[11px] sm:text-xs text-slate-500">Fotokopi • ATK • Studio • Inventaris &amp; Laporan</p>
           </div>
         </div>
 

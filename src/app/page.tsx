@@ -8,13 +8,11 @@ export default function Home() {
       <header className="border-b border-slate-800 px-6 py-4">
         <div className="max-w-6xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center font-black text-xl shadow-lg shadow-blue-500/30">
-              A
-            </div>
-            <div>
-              <h1 className="font-bold text-lg tracking-wide">DEVOS ATK & FOTOCOPY</h1>
-              <p className="text-xs text-slate-400">Point of Sale & Realtime Inventory System</p>
-            </div>
+            <img
+              src="/brand/logo-horizontal-dark.png"
+              alt="FOCUS MARAJA"
+              className="h-10 w-auto object-contain"
+            />
           </div>
 
           <div className="flex items-center gap-3">

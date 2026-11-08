@@ -161,19 +161,21 @@ export default function LoginPage() {
       {/* ========================================================================= */}
       <header className="w-full px-4 sm:px-8 py-3 flex items-center justify-between border-b border-slate-200/90 bg-white/90 backdrop-blur-md shadow-2xs">
         <div className="flex items-center gap-2.5">
-          <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-emerald-600 to-teal-500 text-white flex items-center justify-center font-black shadow-sm shrink-0">
-            <Store className="w-5 h-5" />
-          </div>
+          <img
+            src="/brand/logo-white-bg.png"
+            alt="FOCUS MARAJA"
+            className="w-10 h-10 rounded-2xl object-contain bg-white border border-slate-200 p-0.5 shadow-xs shrink-0"
+          />
           <div>
             <div className="flex items-center gap-2">
               <span className="font-black text-sm sm:text-base tracking-tight text-slate-900">
-                DEVOS ATK &amp; FOTOCOPY
+                FOCUS MARAJA
               </span>
-              <span className="text-[10px] font-mono font-bold bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full border border-emerald-300">
+              <span className="text-[10px] font-mono font-bold bg-slate-900 text-white px-2 py-0.5 rounded-full">
                 POS-01
               </span>
             </div>
-            <p className="text-[11px] text-slate-500 hidden xs:block">Terminal Kasir Toko Ritel &amp; Percetakan</p>
+            <p className="text-[11px] text-slate-500 hidden xs:block">Fotokopi • ATK • Studio • Terminal Kasir</p>
           </div>
         </div>
 
@@ -211,13 +213,21 @@ export default function LoginPage() {
           
           {/* Header Kartu & Pilihan Operator */}
           <div>
-            <div className="text-center mb-4">
-              <span className="text-[11px] font-black text-slate-400 uppercase tracking-widest block mb-1">
-                Pilih Akun Kasir Bertugas
-              </span>
+            {/* Logo FOCUS MARAJA */}
+            <div className="flex flex-col items-center justify-center mb-4 text-center">
+              <div className="p-2.5 bg-slate-950 rounded-2xl shadow-md border border-slate-800 mb-2">
+                <img
+                  src="/brand/logo-horizontal-dark.png"
+                  alt="FOCUS MARAJA"
+                  className="h-9 w-auto object-contain"
+                />
+              </div>
               <h2 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
                 {selectedRole === "kasir" ? "Meja Kasir Penjualan (POS)" : "Portal Owner / Supervisor"}
               </h2>
+              <span className="text-[11px] font-bold text-slate-500 uppercase tracking-widest mt-0.5">
+                Fotokopi • ATK • Studio
+              </span>
             </div>
 
             {/* Tombol Profil Kasir vs Owner */}
@@ -570,7 +580,7 @@ export default function LoginPage() {
       {/* 4. FOOTER                                                                 */}
       {/* ========================================================================= */}
       <footer className="w-full py-2.5 text-center text-[11px] text-slate-500 border-t border-slate-200/80 bg-white/60">
-        &copy; 2026 Devos Toko ATK &amp; Fotocopy • POS Station #01
+        &copy; 2026 FOCUS MARAJA • Fotokopi, ATK &amp; Studio • POS Terminal #01
       </footer>
     </div>
   );

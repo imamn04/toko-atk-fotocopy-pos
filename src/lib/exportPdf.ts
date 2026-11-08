@@ -12,12 +12,12 @@ export function exportTransactionsToPdf(
   doc.setFont("helvetica", "bold");
   doc.setFontSize(16);
   doc.setTextColor(30, 41, 59);
-  doc.text("DEVOS TOKO ATK & FOTOCOPY", 14, 16);
+  doc.text("FOCUS MARAJA", 14, 16);
 
   doc.setFont("helvetica", "normal");
   doc.setFontSize(10);
   doc.setTextColor(100, 116, 139);
-  doc.text("Laporan Rekapitulasi Penjualan & Laba Kotor Resmi", 14, 22);
+  doc.text("Fotokopi • ATK • Studio • Rekapitulasi Penjualan & Laba", 14, 22);
   doc.text(`Periode: ${dateRangeText} | Dicetak: ${new Date().toLocaleString("id-ID")}`, 14, 28);
 
   // Kalkulasi total

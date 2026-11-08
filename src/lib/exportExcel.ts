@@ -16,7 +16,7 @@ export async function exportTransactionsToExcel(
   dateRangeText: string
 ) {
   const workbook = new ExcelJS.Workbook();
-  workbook.creator = "Devos ATK Backoffice";
+  workbook.creator = "FOCUS MARAJA Backoffice";
   workbook.created = new Date();
 
   const worksheet = workbook.addWorksheet("Laporan Penjualan");

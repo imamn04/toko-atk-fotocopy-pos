@@ -21,9 +21,9 @@ export interface ReceiptData {
 }
 
 export function printThermalReceipt(tx: ReceiptData, storeInfo?: { name?: string; address?: string; phone?: string }) {
-  const storeName = storeInfo?.name || "DEVOS TOKO ATK & FOTOCOPY";
-  const storeAddress = storeInfo?.address || "Jl. Pendidikan Raya No. 45 (Depan Kampus)";
-  const storePhone = storeInfo?.phone || "WA: 0812-3456-7890";
+  const storeName = storeInfo?.name || "FOCUS MARAJA";
+  const storeAddress = storeInfo?.address || "Fotokopi – ATK – Studio";
+  const storePhone = storeInfo?.phone || "Layanan Cepat & Akurat";
 
   // Generate Barcode SVG untuk No. Invoice struk
   let barcodeSvg = "";

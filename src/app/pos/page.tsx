@@ -686,18 +686,20 @@ export default function PosPage() {
       {/* Top Header Kasir - Bersih & Ritel Modern (Bukan AI Gemini Biru) */}
       <header className="bg-white border-b border-slate-200 px-3 sm:px-6 py-2.5 sm:py-3 flex flex-wrap sm:flex-nowrap items-center justify-between gap-2 shadow-xs shrink-0">
         <div className="flex items-center gap-2 sm:gap-3">
-          <div className="bg-emerald-600 p-2 rounded-xl shadow-xs shrink-0">
-            <Store className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
-          </div>
+          <img
+            src="/brand/logo-white-bg.png"
+            alt="FOCUS MARAJA"
+            className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl object-contain bg-white border border-slate-200 p-0.5 shadow-xs shrink-0"
+          />
           <div>
             <h1 className="text-sm sm:text-base font-black leading-tight tracking-tight text-slate-900 flex items-center gap-1.5">
-              DEVOS ATK POS
-              <span className="text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full font-bold">
+              FOCUS MARAJA POS
+              <span className="text-[10px] bg-slate-900 text-white px-2 py-0.5 rounded-full font-bold">
                 KASIR AKTIF
               </span>
             </h1>
             <p className="text-[10px] sm:text-[11px] text-slate-500 hidden xs:block">
-              Sistem Kasir Ritel ATK &amp; Jasa Fotocopy • Terminal #01
+              Fotokopi • ATK • Studio • Terminal Kasir #01
             </p>
           </div>
         </div>
@@ -1530,10 +1532,10 @@ export default function PosPage() {
                 {/* Efek Gerigi Kertas Kasir (Top Decorative Notch) */}
                 <div className="text-center pb-2 border-b-2 border-slate-800">
                   <div className="font-black text-sm text-slate-900 tracking-wider">
-                    DEVOS TOKO ATK & FOTOCOPY
+                    FOCUS MARAJA
                   </div>
                   <div className="text-[10px] text-slate-500 mt-0.5">
-                    Jl. Pendidikan Raya No. 45
+                    Fotokopi • ATK • Studio
                   </div>
                   <div className="text-[10px] text-slate-500">
                     WA: 0812-3456-7890
