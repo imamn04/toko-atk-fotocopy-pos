@@ -31,10 +31,19 @@ import {
   Paperclip,
   Copy,
   Keyboard,
-  Coins
+  Coins,
+  MessageCircle,
+  Send,
+  Calculator,
+  Lock,
+  Layers,
+  Sparkles
 } from "lucide-react";
 import { printThermalReceipt } from "@/lib/receiptPrinter";
 import CameraBarcodeScanner from "@/components/CameraBarcodeScanner";
+import CopyPrintCalculatorModal from "@/components/CopyPrintCalculatorModal";
+import ShiftCloseModal from "@/components/ShiftCloseModal";
+import { openWhatsAppReceipt } from "@/lib/whatsappReceipt";
 import { Camera } from "lucide-react";
 import { playBeepSound, playSuccessChime } from "@/lib/sound";
 
@@ -179,6 +188,7 @@ export default function PosPage() {
     initialCashFloat: number;
     shiftNote?: string;
     cashierName?: string;
+    openedAt?: string;
   } | null>(null);
 
   useEffect(() => {
@@ -203,7 +213,10 @@ export default function PosPage() {
   // Keranjang belanja kasir (Sebelah Kanan)
   const [cart, setCart] = useState<CartItem[]>([]);
   const [barcodeInput, setBarcodeInput] = useState("");
-  const [discountAmount, setDiscountAmount] = useState<number>(0);
+  
+  // Fitur Diskon: Mode Rupiah (Rp) vs Persen (%)
+  const [discountMode, setDiscountMode] = useState<"rp" | "percent">("rp");
+  const [discountInputVal, setDiscountInputVal] = useState<number>(0);
   const [showDiscountInput, setShowDiscountInput] = useState(false);
   const [mobileActiveTab, setMobileActiveTab] = useState<"catalog" | "cart">("catalog");
 
@@ -213,6 +226,26 @@ export default function PosPage() {
 
   // Scanner Kamera
   const [showCameraScanner, setShowCameraScanner] = useState(false);
+
+  // Kalkulator Jasa Fotokopi & Print Cepat
+  const [showCalculatorModal, setShowCalculatorModal] = useState(false);
+
+  // Modal Tutup Kasir / Setor Laci (Z-Report)
+  const [showShiftCloseModal, setShowShiftCloseModal] = useState(false);
+  const [activeShiftDb, setActiveShiftDb] = useState<{
+    id: string;
+    cashierName: string;
+    shiftType: string;
+    openingFloat: number;
+    totalCashSales: number;
+    totalQrisSales: number;
+    totalTransactions: number;
+    expectedCash: number;
+    openedAt: string;
+  } | null>(null);
+
+  // Nomor WA untuk kirim struk digital
+  const [waPhoneInput, setWaPhoneInput] = useState<string>("");
 
   // Notifikasi Toast
   const [statusMessage, setStatusMessage] = useState<{ text: string; type: "success" | "error" | "info" } | null>(null);
@@ -234,6 +267,19 @@ export default function PosPage() {
   const lastScanKeyTimeRef = useRef<number>(0);
   const handleBarcodeLookupRef = useRef<((code: string) => Promise<void>) | null>(null);
 
+  // Ambil data shift kasir aktif dari database
+  const fetchActiveShift = useCallback(async () => {
+    try {
+      const res = await fetch("/api/pos/shift");
+      const json = await res.json();
+      if (json.success && json.data) {
+        setActiveShiftDb(json.data);
+      }
+    } catch (e) {
+      console.debug("Fetch shift info skipped:", e);
+    }
+  }, []);
+
   // Periksa sesi login kasir
   useEffect(() => {
     async function checkAuth() {
@@ -242,6 +288,7 @@ export default function PosPage() {
         const data = await res.json();
         if (data.success && data.user) {
           setCurrentUser(data.user);
+          fetchActiveShift();
         } else {
           router.push("/login");
         }
@@ -250,7 +297,7 @@ export default function PosPage() {
       }
     }
     checkAuth();
-  }, [router]);
+  }, [router, fetchActiveShift]);
 
   // Notifikasi auto-hide
   const notify = useCallback((text: string, type: "success" | "error" | "info" = "info") => {
@@ -260,8 +307,12 @@ export default function PosPage() {
     }, 3500);
   }, []);
 
-  // Kalkulasi Total
+  // Kalkulasi Total & Diskon (Support Rp & %)
   const subtotalAmount = cart.reduce((sum, item) => sum + item.subtotal, 0);
+  const discountAmount =
+    discountMode === "percent"
+      ? Math.round((subtotalAmount * Math.min(100, Math.max(0, discountInputVal))) / 100)
+      : Math.min(subtotalAmount, Math.max(0, discountInputVal));
   const totalAmount = Math.max(0, subtotalAmount - discountAmount);
   const totalItemCount = cart.reduce((sum, item) => sum + item.qty, 0);
   const changeDue = Math.max(0, (cashPaidInput || 0) - totalAmount);
@@ -343,7 +394,8 @@ export default function PosPage() {
 
     setHeldOrders((prev) => [newHold, ...prev]);
     setCart([]);
-    setDiscountAmount(0);
+    setDiscountInputVal(0);
+    setDiscountMode("rp");
     notify(`Transaksi berhasil ditahan: "${note}". Keranjang siap untuk pelanggan berikutnya!`, "info");
     focusScanner();
   }, [cart, heldOrders.length, discountAmount, notify, focusScanner]);
@@ -386,6 +438,11 @@ export default function PosPage() {
         } else {
           notify("Tidak ada antrean pesanan untuk ditahan.", "info");
         }
+        return;
+      }
+      if (key === "F7" || code === "F7") {
+        e.preventDefault();
+        setShowCalculatorModal((prev) => !prev);
         return;
       }
       if (key === "F8" || code === "F8") {
@@ -541,7 +598,8 @@ export default function PosPage() {
     if (cart.length === 0) return;
     if (confirm("Apakah yakin ingin mengosongkan keranjang belanja kasir?")) {
       setCart([]);
-      setDiscountAmount(0);
+      setDiscountInputVal(0);
+      setDiscountMode("rp");
       notify("Keranjang belanja dikosongkan.", "info");
       focusScanner();
     }
@@ -590,7 +648,8 @@ export default function PosPage() {
     }
 
     setCart(order.items);
-    setDiscountAmount(order.discount || 0);
+    setDiscountInputVal(order.discount || 0);
+    setDiscountMode("rp");
     setHeldOrders((prev) => prev.filter((o) => o.id !== order.id));
     setShowHeldOrdersModal(false);
     notify(`Transaksi "${order.customerNote}" telah dipulihkan ke keranjang.`, "success");
@@ -612,6 +671,7 @@ export default function PosPage() {
           qty: c.qty,
         })),
         cashPaid: paymentMethod === "CASH" ? cashPaidInput : totalAmount,
+        discountAmount,
         paymentMethod,
         cashierId: currentUser?.id,
       };
@@ -634,7 +694,7 @@ export default function PosPage() {
       setCompletedTx(data.data);
       setShowPaymentModal(false);
       setCart([]);
-      setDiscountAmount(0);
+      setDiscountInputVal(0);
       setMobileActiveTab("catalog");
 
       // Suara transaksi sukses
@@ -642,6 +702,7 @@ export default function PosPage() {
 
       // Refresh katalog produk agar sisa stok ter-update langsung
       loadCatalog("", selectedCategory);
+      fetchActiveShift();
 
       // LANGSUNG OTOMATIS MUNCULKAN DIALOG CETAK STRUK
       setTimeout(() => {
@@ -717,28 +778,34 @@ export default function PosPage() {
             </button>
           )}
 
-          {/* Shift & Kas Laci Awal Badge (Minimarket / Alfamart Style) */}
-          {shiftInfo && (
-            <div className="hidden lg:flex items-center gap-1.5 bg-emerald-50 text-emerald-800 border border-emerald-200 px-2.5 py-1.5 rounded-xl text-xs font-bold">
-              <Coins className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-              <span>
-                {shiftInfo.shift === "SHIFT_1"
-                  ? "Shift 1 (Pagi)"
-                  : shiftInfo.shift === "SHIFT_2"
-                  ? "Shift 2 (Siang)"
-                  : "Full Shift"}
-              </span>
-              <span className="text-emerald-300">•</span>
-              <span className="text-[11px] text-emerald-700">
-                Kas: Rp {shiftInfo.initialCashFloat.toLocaleString("id-ID")}
-              </span>
-            </div>
-          )}
+          {/* Shift & Kas Laci Awal Badge (Bisa Diklik untuk Tutup Shift & Setor Laci) */}
+          <button
+            type="button"
+            onClick={() => setShowShiftCloseModal(true)}
+            className="flex items-center gap-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-300 px-2.5 py-1.5 rounded-xl text-xs font-bold transition shadow-2xs active:scale-95 cursor-pointer"
+            title="Klik untuk melihat rekap laci uang atau tutup shift kasir (Z-Report)"
+          >
+            <Coins className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+            <span className="hidden sm:inline">
+              {activeShiftDb?.shiftType === "SHIFT_2"
+                ? "Shift 2"
+                : activeShiftDb?.shiftType === "FULL"
+                ? "Full Day"
+                : "Shift 1"}
+            </span>
+            <span className="text-emerald-300 hidden sm:inline">•</span>
+            <span className="text-[11px] font-black text-emerald-800">
+              Laci: Rp {(activeShiftDb?.expectedCash || shiftInfo?.initialCashFloat || 100000).toLocaleString("id-ID")}
+            </span>
+            <span className="hidden md:inline text-[9px] bg-emerald-700 text-white px-1.5 py-0.5 rounded font-black uppercase">
+              Tutup Kasir
+            </span>
+          </button>
 
           {/* User Info */}
           <div className="flex items-center gap-1.5 bg-slate-100 px-2.5 py-1.5 rounded-xl border border-slate-200">
             <User className="w-3.5 h-3.5 text-slate-600 shrink-0" />
-            <span className="text-slate-800 font-bold text-xs truncate max-w-[90px] sm:max-w-[120px]">{currentUser?.name || "Kasir"}</span>
+            <span className="text-slate-800 font-bold text-xs truncate max-w-[80px] sm:max-w-[120px]">{currentUser?.name || "Kasir"}</span>
             <span className="text-[9px] font-mono bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded uppercase font-bold hidden sm:inline">
               {currentUser?.role || "KARYAWAN"}
             </span>
@@ -760,7 +827,8 @@ export default function PosPage() {
           <button
             type="button"
             onClick={handleLogout}
-            className="flex items-center gap-1 text-rose-600 hover:text-rose-700 hover:bg-rose-50 px-2.5 py-1.5 rounded-xl border border-rose-200 transition font-bold"
+            className="flex items-center gap-1 text-rose-600 hover:text-rose-700 hover:bg-rose-50 px-2 sm:px-2.5 py-1.5 rounded-xl border border-rose-200 transition font-bold"
+            title="Keluar dari sesi kasir"
           >
             <LogOut className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">Keluar</span>
@@ -858,8 +926,20 @@ export default function PosPage() {
             )}
           </div>
 
-          {/* Horizontal Category Filter Pills dengan Ikon Ritel */}
+          {/* Horizontal Category Filter Pills dengan Ikon Ritel & Kalkulator Fotokopi */}
           <div className="flex items-center gap-2 overflow-x-auto pb-1 shrink-0 scrollbar-none">
+            {/* Tombol Spesial: Kalkulator Cepat Fotokopi & Print */}
+            <button
+              type="button"
+              onClick={() => setShowCalculatorModal(true)}
+              className="px-3.5 py-1.5 rounded-xl text-xs font-black whitespace-nowrap transition flex items-center gap-1.5 bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700 text-white shadow-xs active:scale-95 cursor-pointer"
+              title="Kalkulator Cepat Jasa Fotokopi, Print, Lembar & Jilid (F7)"
+            >
+              <Calculator className="w-3.5 h-3.5" />
+              <span>Kalkulator Fotokopi</span>
+              <kbd className="hidden sm:inline px-1 py-0.2 bg-teal-800/80 rounded text-[9px] font-mono">F7</kbd>
+            </button>
+
             <button
               type="button"
               onClick={() => setSelectedCategory("ALL")}
@@ -1036,6 +1116,17 @@ export default function PosPage() {
               <span>Tahan Struk {heldOrders.length > 0 && `(${heldOrders.length})`}</span>
             </button>
 
+            {/* F7: Kalkulator Jasa Fotokopi */}
+            <button
+              type="button"
+              onClick={() => setShowCalculatorModal(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-50 hover:bg-teal-50 hover:text-teal-800 border border-slate-200 hover:border-teal-300 transition active:scale-95 text-slate-700 font-bold text-xs"
+              title="Klik atau tekan F7 untuk membuka kalkulator jasa fotokopi & print"
+            >
+              <kbd className="px-1.5 py-0.5 bg-white border border-slate-300 rounded font-mono text-[10px] text-slate-800 font-black shadow-2xs">F7</kbd>
+              <span>Fotokopi</span>
+            </button>
+
             {/* F8: Input Diskon */}
             <button
               type="button"
@@ -1077,7 +1168,7 @@ export default function PosPage() {
           </div>
 
           {/* Mobile Bottom Floating Checkout Bar (Hanya Muncul di Layar HP/Tablet) */}
-          <div className="lg:hidden p-3 bg-white border border-slate-200 rounded-2xl shadow-lg flex items-center justify-between shrink-0 z-20">
+          <div className="lg:hidden p-3 bg-white border border-slate-200 rounded-2xl shadow-lg flex items-center justify-between shrink-0 z-20 pb-safe">
             <div className="flex flex-col">
               <span className="text-[11px] text-slate-500 font-bold">{totalItemCount} pcs ({cart.length} item)</span>
               <span className="text-base font-black text-slate-900">Rp {totalAmount.toLocaleString("id-ID")}</span>
@@ -1224,27 +1315,76 @@ export default function PosPage() {
                 <span className="font-semibold text-slate-800">Rp {subtotalAmount.toLocaleString("id-ID")}</span>
               </div>
 
-              {/* Fitur Diskon Belanja */}
+              {/* Fitur Diskon Belanja (Pilihan Nominal Rp vs Persen %) */}
               {showDiscountInput ? (
-                <div className="flex items-center gap-2 pt-1">
-                  <Tag className="w-3.5 h-3.5 text-blue-600" />
-                  <span className="font-semibold text-slate-700">Potongan Diskon (Rp):</span>
-                  <input
-                    type="number"
-                    min={0}
-                    max={subtotalAmount}
-                    value={discountAmount || ""}
-                    onChange={(e) => setDiscountAmount(Math.min(subtotalAmount, Number(e.target.value) || 0))}
-                    className="w-28 px-2 py-1 text-xs font-black text-slate-950 bg-white border border-slate-300 rounded-lg text-right focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-2xs"
-                    placeholder="0"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowDiscountInput(false)}
-                    className="text-[10px] text-slate-400 hover:text-slate-600"
-                  >
-                    Tutup
-                  </button>
+                <div className="p-2.5 bg-blue-50/80 rounded-xl border border-blue-200 space-y-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-extrabold text-blue-950 flex items-center gap-1">
+                      <Tag className="w-3.5 h-3.5 text-blue-600" />
+                      Diskon Transaksi
+                    </span>
+                    <div className="flex bg-white rounded-lg border border-blue-200 p-0.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDiscountMode("rp");
+                          setDiscountInputVal(0);
+                        }}
+                        className={`px-2 py-0.5 text-[10px] font-black rounded transition ${
+                          discountMode === "rp" ? "bg-blue-600 text-white" : "text-slate-600 hover:text-slate-900"
+                        }`}
+                      >
+                        Rp
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDiscountMode("percent");
+                          setDiscountInputVal(0);
+                        }}
+                        className={`px-2 py-0.5 text-[10px] font-black rounded transition ${
+                          discountMode === "percent" ? "bg-blue-600 text-white" : "text-slate-600 hover:text-slate-900"
+                        }`}
+                      >
+                        %
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <div className="relative flex-1">
+                      <span className="absolute left-2.5 top-1.5 text-xs font-black text-slate-400 select-none">
+                        {discountMode === "rp" ? "Rp" : "%"}
+                      </span>
+                      <input
+                        type="number"
+                        min={0}
+                        max={discountMode === "percent" ? 100 : subtotalAmount}
+                        value={discountInputVal || ""}
+                        onChange={(e) => {
+                          const val = Math.max(0, parseInt(e.target.value) || 0);
+                          setDiscountInputVal(discountMode === "percent" ? Math.min(100, val) : Math.min(subtotalAmount, val));
+                        }}
+                        placeholder="0"
+                        className="w-full pl-8 pr-2.5 py-1.5 text-xs font-black text-slate-900 bg-white border border-blue-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-right shadow-2xs"
+                        autoFocus
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowDiscountInput(false)}
+                      className="px-2.5 py-1.5 text-xs font-bold text-slate-600 hover:bg-slate-200 rounded-lg transition"
+                    >
+                      Selesai
+                    </button>
+                  </div>
+
+                  {discountAmount > 0 && (
+                    <div className="text-[11px] font-bold text-blue-700 flex justify-between pt-0.5 border-t border-blue-200/60">
+                      <span>Nilai Potongan Diskon:</span>
+                      <span className="text-rose-600">- Rp {discountAmount.toLocaleString("id-ID")}</span>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="flex justify-between items-center text-[11px]">
@@ -1254,7 +1394,9 @@ export default function PosPage() {
                     className="text-emerald-700 hover:underline flex items-center gap-1 font-semibold"
                   >
                     <Percent className="w-3 h-3" />
-                    {discountAmount > 0 ? "Ubah Diskon" : "+ Beri Diskon / Potongan"}
+                    {discountAmount > 0
+                      ? `Ubah Diskon (${discountMode === "percent" ? `${discountInputVal}%` : `Rp ${discountAmount.toLocaleString("id-ID")}`})`
+                      : "+ Beri Diskon / Potongan"}
                   </button>
                   {discountAmount > 0 && (
                     <span className="font-bold text-rose-600">- Rp {discountAmount.toLocaleString("id-ID")}</span>
@@ -1602,15 +1744,45 @@ export default function PosPage() {
               </div>
             </div>
 
+            {/* Input & Tombol Kirim Struk via WhatsApp */}
+            <div className="px-4 pb-1">
+              <div className="bg-emerald-50/80 p-3 rounded-2xl border border-emerald-200 space-y-2">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-extrabold text-emerald-950 flex items-center gap-1.5">
+                    <MessageCircle className="w-4 h-4 text-emerald-600" />
+                    Kirim Struk via WhatsApp
+                  </span>
+                  <span className="text-[10px] text-emerald-700 font-semibold">Paperless / Hemat Kertas</span>
+                </div>
+                <div className="flex gap-2">
+                  <input
+                    type="tel"
+                    value={waPhoneInput}
+                    onChange={(e) => setWaPhoneInput(e.target.value)}
+                    placeholder="No. WA (0812xxxx atau kosong)"
+                    className="flex-1 px-3 py-1.5 text-xs font-bold text-slate-900 bg-white border border-emerald-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => openWhatsAppReceipt(completedTx, waPhoneInput)}
+                    className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-xs font-black rounded-xl flex items-center gap-1.5 shadow-xs transition"
+                  >
+                    <Send className="w-3.5 h-3.5" />
+                    <span>Kirim WA</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
             {/* Tombol Aksi Kasir */}
             <div className="p-4 bg-white border-t border-slate-200 flex flex-col gap-2">
               <button
                 type="button"
                 onClick={handlePrintReceipt}
-                className="w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-2 transition shadow-xs"
+                className="w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-2 transition shadow-xs cursor-pointer"
               >
                 <Printer className="w-4 h-4" />
-                <span>Cetak Ulang Struk</span>
+                <span>Cetak Ulang Struk (Thermal)</span>
               </button>
 
               <button
@@ -1618,9 +1790,10 @@ export default function PosPage() {
                 autoFocus
                 onClick={() => {
                   setCompletedTx(null);
+                  setWaPhoneInput("");
                   focusScanner();
                 }}
-                className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white text-sm font-extrabold rounded-xl flex items-center justify-center gap-2 shadow-md transition"
+                className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white text-sm font-extrabold rounded-xl flex items-center justify-center gap-2 shadow-md transition cursor-pointer"
               >
                 <span>Transaksi Baru (Enter)</span>
                 <ArrowRight className="w-4 h-4" />
@@ -1637,6 +1810,41 @@ export default function PosPage() {
         onScanSuccess={(decodedText) => {
           handleBarcodeLookup(decodedText);
           setShowCameraScanner(false);
+        }}
+      />
+
+      {/* MODAL KALKULATOR JASA FOTOKOPI & PRINT CEPAT */}
+      <CopyPrintCalculatorModal
+        isOpen={showCalculatorModal}
+        onClose={() => setShowCalculatorModal(false)}
+        existingProducts={products}
+        onAddToCart={(item) => {
+          setCart((prev) => [item, ...prev]);
+          playSuccessChime();
+          notify("Jasa fotokopi/print berhasil ditambahkan ke keranjang!", "success");
+        }}
+      />
+
+      {/* MODAL TUTUP KASIR & SETOR LACI (Z-REPORT) */}
+      <ShiftCloseModal
+        isOpen={showShiftCloseModal}
+        onClose={() => setShowShiftCloseModal(false)}
+        shiftData={
+          activeShiftDb || {
+            id: "local-shift",
+            cashierName: currentUser?.name || "Kasir",
+            shiftType: shiftInfo?.shift || "SHIFT_1",
+            openingFloat: shiftInfo?.initialCashFloat || 100000,
+            totalCashSales: 0,
+            totalQrisSales: 0,
+            totalTransactions: 0,
+            expectedCash: shiftInfo?.initialCashFloat || 100000,
+            openedAt: shiftInfo?.openedAt || new Date().toISOString(),
+          }
+        }
+        onShiftClosed={() => {
+          setShowShiftCloseModal(false);
+          handleLogout();
         }}
       />
     </div>

@@ -26,7 +26,8 @@ import {
   PieChart as PieIcon,
   ChevronLeft,
   ChevronRight,
-  QrCode
+  QrCode,
+  Coins
 } from "lucide-react";
 import {
   ComposedChart,
@@ -45,6 +46,7 @@ import {
 } from "recharts";
 import { exportTransactionsToExcel, TransactionReportData } from "@/lib/exportExcel";
 import { exportTransactionsToPdf } from "@/lib/exportPdf";
+import { printShiftZReport, ShiftReportData } from "@/lib/receiptPrinter";
 
 interface Category {
   id: string;
@@ -130,9 +132,13 @@ export default function AdminPage() {
   const router = useRouter();
   const [currentUser, setCurrentUser] = useState<UserSession | null>(null);
 
-  // Tab Menu: 'inventory' | 'reports' | 'users'
-  const [activeTab, setActiveTab] = useState<"inventory" | "reports" | "users">("inventory");
+  // Tab Menu: 'inventory' | 'reports' | 'users' | 'shifts'
+  const [activeTab, setActiveTab] = useState<"inventory" | "reports" | "users" | "shifts">("inventory");
   const [reportSubTab, setReportSubTab] = useState<"daily" | "monthly" | "yearly">("daily");
+
+  // State Riwayat Shift Kasir
+  const [shifts, setShifts] = useState<ShiftReportData[]>([]);
+  const [shiftsLoading, setShiftsLoading] = useState(false);
 
   // State Produk & Kategori
   const [products, setProducts] = useState<Product[]>([]);
@@ -267,6 +273,21 @@ export default function AdminPage() {
       console.error(e);
     } finally {
       setUsersLoading(false);
+    }
+  }, []);
+
+  const fetchShifts = useCallback(async () => {
+    setShiftsLoading(true);
+    try {
+      const res = await fetch("/api/admin/shifts");
+      const data = await res.json();
+      if (data.success && data.data) {
+        setShifts(data.data);
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setShiftsLoading(false);
     }
   }, []);
 
@@ -768,6 +789,22 @@ export default function AdminPage() {
           >
             <Users className="w-4 h-4" />
             <span>Kelola Karyawan & Role (RBAC)</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setActiveTab("shifts");
+              fetchShifts();
+            }}
+            className={`flex items-center gap-2 px-3.5 sm:px-4 py-2 text-xs font-black rounded-xl transition whitespace-nowrap ${
+              activeTab === "shifts"
+                ? "bg-amber-600 text-white shadow-md shadow-amber-500/25 ring-2 ring-amber-400/20"
+                : "text-slate-600 hover:bg-slate-100"
+            }`}
+          >
+            <Coins className="w-4 h-4" />
+            <span>Rekap Tutup Shift Kasir (Z-Report)</span>
           </button>
         </div>
       </div>
@@ -1732,6 +1769,173 @@ export default function AdminPage() {
             </div>
           </div>
         )}
+
+        {/* TAB 4: RIWAYAT TUTUP SHIFT KASIR (Z-REPORT) */}
+        {activeTab === "shifts" && (
+          <div className="space-y-4">
+            <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-xs flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h3 className="font-extrabold text-base text-slate-900 flex items-center gap-2">
+                  <Coins className="w-5 h-5 text-amber-600" />
+                  Rekap Tutup Kasir &amp; Laci Uang (Shift)
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Audit pencocokan uang tunai fisik laci kasir vs omzet penjualan sistem (Laporan Z-Report)
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={fetchShifts}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold rounded-xl transition flex items-center gap-1.5"
+              >
+                <span>Muat Ulang Shift</span>
+              </button>
+            </div>
+
+            <div className="bg-white rounded-3xl border border-slate-200 shadow-xs overflow-hidden">
+              <div className="overflow-x-auto">
+                {shiftsLoading ? (
+                  <div className="py-16 text-center text-xs text-slate-400">Memuat riwayat shift kasir...</div>
+                ) : shifts.length === 0 ? (
+                  <div className="py-16 text-center text-slate-400 text-xs">
+                    Belum ada riwayat shift yang tersimpan.
+                  </div>
+                ) : (
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="bg-slate-50/80 border-b border-slate-200 text-[11px] font-black uppercase tracking-wider text-slate-600">
+                        <th className="py-3 px-4">Waktu Buka / Tutup</th>
+                        <th className="py-3 px-4">Kasir</th>
+                        <th className="py-3 px-4">Shift</th>
+                        <th className="py-3 px-4 text-right">Modal Awal</th>
+                        <th className="py-3 px-4 text-right">Penjualan Tunai</th>
+                        <th className="py-3 px-4 text-right">Penjualan QRIS</th>
+                        <th className="py-3 px-4 text-right">Uang Fisik Laci</th>
+                        <th className="py-3 px-4 text-center">Selisih</th>
+                        <th className="py-3 px-4 text-center">Status</th>
+                        <th className="py-3 px-4 text-center">Cetak</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 text-xs">
+                      {shifts.map((s) => {
+                        const expected = (s.openingFloat || 0) + (s.totalCashSales || 0);
+                        const actual = s.closingCash ?? expected;
+                        const diff = actual - expected;
+                        const isClosed = s.status === "CLOSED";
+
+                        return (
+                          <tr key={s.id} className="hover:bg-slate-50/60 transition">
+                            <td className="py-3 px-4">
+                              <div className="font-bold text-slate-900">
+                                {new Date(s.openedAt).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })}
+                              </div>
+                              <div className="text-[11px] text-slate-500">
+                                {new Date(s.openedAt).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}
+                                {s.closedAt && ` – ${new Date(s.closedAt).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}`}
+                              </div>
+                            </td>
+
+                            <td className="py-3 px-4 font-bold text-slate-800">
+                              {s.cashierName}
+                            </td>
+
+                            <td className="py-3 px-4">
+                              <span className="font-bold text-slate-700 bg-slate-100 px-2 py-0.5 rounded-lg text-[11px]">
+                                {s.shiftType === "SHIFT_1"
+                                  ? "Shift 1 (Pagi)"
+                                  : s.shiftType === "SHIFT_2"
+                                  ? "Shift 2 (Siang)"
+                                  : "Full Day"}
+                              </span>
+                            </td>
+
+                            <td className="py-3 px-4 text-right font-medium text-slate-700">
+                              Rp {s.openingFloat.toLocaleString("id-ID")}
+                            </td>
+
+                            <td className="py-3 px-4 text-right font-black text-emerald-700">
+                              Rp {s.totalCashSales.toLocaleString("id-ID")}
+                            </td>
+
+                            <td className="py-3 px-4 text-right font-bold text-indigo-700">
+                              Rp {s.totalQrisSales.toLocaleString("id-ID")}
+                            </td>
+
+                            <td className="py-3 px-4 text-right font-black text-slate-900">
+                              {s.closingCash != null ? `Rp ${s.closingCash.toLocaleString("id-ID")}` : "–"}
+                            </td>
+
+                            <td className="py-3 px-4 text-center">
+                              {s.closingCash == null ? (
+                                <span className="text-[10px] text-slate-400 font-semibold">Sedang Aktif</span>
+                              ) : diff === 0 ? (
+                                <span className="text-[10px] font-black text-emerald-800 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+                                  PAS (Rp 0)
+                                </span>
+                              ) : diff > 0 ? (
+                                <span className="text-[10px] font-black text-blue-800 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-full">
+                                  +Rp {diff.toLocaleString("id-ID")}
+                                </span>
+                              ) : (
+                                <span className="text-[10px] font-black text-rose-800 bg-rose-50 border border-rose-200 px-2 py-0.5 rounded-full">
+                                  -Rp {Math.abs(diff).toLocaleString("id-ID")}
+                                </span>
+                              )}
+                            </td>
+
+                            <td className="py-3 px-4 text-center">
+                              <span
+                                className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
+                                  isClosed
+                                    ? "bg-slate-100 text-slate-700"
+                                    : "bg-emerald-100 text-emerald-800 animate-pulse"
+                                }`}
+                              >
+                                {isClosed ? "DITUTUP" : "AKTIF"}
+                              </span>
+                            </td>
+
+                            <td className="py-3 px-4 text-center">
+                              {isClosed ? (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    printShiftZReport({
+                                      id: s.id,
+                                      cashierName: s.cashierName,
+                                      shiftType: s.shiftType,
+                                      openedAt: s.openedAt,
+                                      closedAt: s.closedAt || new Date().toISOString(),
+                                      openingFloat: s.openingFloat,
+                                      totalCashSales: s.totalCashSales,
+                                      totalQrisSales: s.totalQrisSales,
+                                      totalTransactions: s.totalTransactions,
+                                      expectedCash: expected,
+                                      closingCash: s.closingCash || 0,
+                                      discrepancy: diff,
+                                      notes: s.notes,
+                                    })
+                                  }
+                                  className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition"
+                                  title="Cetak Ulang Struk Rekap Shift (Z-Report)"
+                                >
+                                  <Printer className="w-3.5 h-3.5" />
+                                </button>
+                              ) : (
+                                <span className="text-slate-300">–</span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* ========================================================================= */}
@@ -1908,6 +2112,16 @@ export default function AdminPage() {
 
             <form onSubmit={handleUpdateProduct} className="p-6 space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="md:col-span-2 flex items-center justify-between bg-slate-50 px-3 py-2 rounded-xl border border-slate-200">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wide">SKU Sistem:</span>
+                    <span className="font-mono font-black text-xs text-slate-800 bg-white px-2 py-0.5 rounded border border-slate-300">
+                      {editingProduct.sku}
+                    </span>
+                  </div>
+                  <span className="text-[10px] text-slate-400 font-medium hidden sm:inline">Terkunci otomatis (Aman untuk barcode stiker)</span>
+                </div>
+
                 <div className="md:col-span-2">
                   <label className="text-xs font-extrabold text-slate-800 uppercase tracking-wider block mb-1">
                     Nama Barang *

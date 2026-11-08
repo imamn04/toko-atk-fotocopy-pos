@@ -6,7 +6,7 @@ generator client {
 }
 
 datasource db {
-  provider = "mysql"
+  provider = "sqlite"
   url      = env("DATABASE_URL")
 }
 
@@ -61,17 +61,20 @@ model Product {
 }
 
 model Transaction {
-  id            String            @id @default(cuid())
-  invoiceNumber String            @unique // e.g. TRX-20261106-0001
-  cashierId     String
-  cashier       User              @relation(fields: [cashierId], references: [id])
-  totalAmount   Float             // Total Belanja
-  totalCost     Float             // Total HPP (untuk laba kotor)
-  cashPaid      Float             // Jumlah Uang Diterima
-  changeDue     Float             // Kembalian
-  paymentMethod String            @default("CASH") // CASH, QRIS, TRANSFER
-  createdAt     DateTime          @default(now())
-  items         TransactionItem[]
+  id             String            @id @default(cuid())
+  invoiceNumber  String            @unique // e.g. TRX-20261106-0001
+  cashierId      String
+  cashier        User              @relation(fields: [cashierId], references: [id])
+  totalAmount    Float             // Total Belanja (setelah diskon)
+  totalCost      Float             // Total HPP (untuk laba kotor)
+  discountAmount Float             @default(0) // Nilai diskon potongan harga
+  cashPaid       Float             // Jumlah Uang Diterima
+  changeDue      Float             // Kembalian
+  paymentMethod  String            @default("CASH") // CASH, QRIS, TRANSFER
+  customerName   String?
+  customerPhone  String?
+  createdAt      DateTime          @default(now())
+  items          TransactionItem[]
 
   @@index([invoiceNumber])
   @@index([createdAt])
@@ -87,5 +90,25 @@ model TransactionItem {
   costPrice     Float       // HPP saat transaksi terjadi
   sellingPrice  Float       // Harga jual saat transaksi terjadi
   subtotal      Float       // qty * sellingPrice
+}
+
+model Shift {
+  id                String    @id @default(cuid())
+  cashierId         String
+  cashierName       String
+  shiftType         String    @default("SHIFT_1") // SHIFT_1, SHIFT_2, FULL
+  openingFloat      Float     @default(0)         // Modal awal laci kasir
+  closingCash       Float?                        // Uang fisik saat tutup kasir
+  expectedCash      Float?                        // Dihitung sistem: openingFloat + totalCashSales
+  totalCashSales    Float     @default(0)
+  totalQrisSales    Float     @default(0)
+  totalTransactions Int       @default(0)
+  notes             String?
+  status            String    @default("OPEN")    // OPEN, CLOSED
+  openedAt          DateTime  @default(now())
+  closedAt          DateTime?
+
+  @@index([status])
+  @@index([openedAt])
 }
 

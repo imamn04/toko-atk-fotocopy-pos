@@ -23,4 +23,21 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior-y: none;
+}
+
+/* Safe area insets for iOS notch, dynamic island, and home bar */
+.pb-safe {
+  padding-bottom: max(0.75rem, env(safe-area-inset-bottom, 0px));
+}
+.pt-safe {
+  padding-top: max(0.5rem, env(safe-area-inset-top, 0px));
+}
+
+/* Touch targets & smooth mobile interactions */
+@media (max-width: 768px) {
+  input, select, textarea {
+    font-size: 16px !important; /* Mencegah auto-zoom di Safari iOS */
+  }
 }

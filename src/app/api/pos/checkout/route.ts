@@ -10,11 +10,22 @@ interface CheckoutItemPayload {
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { items, cashPaid, paymentMethod = "CASH", cashierId } = body as {
+    const {
+      items,
+      cashPaid,
+      discountAmount: rawDiscount = 0,
+      paymentMethod = "CASH",
+      cashierId,
+      customerName,
+      customerPhone,
+    } = body as {
       items: CheckoutItemPayload[];
       cashPaid: number;
+      discountAmount?: number;
       paymentMethod?: string;
       cashierId?: string;
+      customerName?: string;
+      customerPhone?: string;
     };
 
     if (!items || !Array.isArray(items) || items.length === 0) {
@@ -108,19 +119,23 @@ export async function POST(req: Request) {
       });
     }
 
+    // Potongan Diskon
+    const discountAmount = Math.max(0, Math.min(totalAmount, Number(rawDiscount) || 0));
+    const finalTotalAmount = Math.max(0, totalAmount - discountAmount);
+
     // Validasi nominal pembayaran
-    const effectivePaid = paymentMethod === "CASH" ? Number(cashPaid) : totalAmount;
-    if (paymentMethod === "CASH" && effectivePaid < totalAmount) {
+    const effectivePaid = paymentMethod === "CASH" ? Number(cashPaid) : finalTotalAmount;
+    if (paymentMethod === "CASH" && effectivePaid < finalTotalAmount) {
       return NextResponse.json(
         {
           success: false,
-          message: `Uang pembayaran kurang! Total: Rp ${totalAmount.toLocaleString("id-ID")}, Dibayar: Rp ${effectivePaid.toLocaleString("id-ID")}`,
+          message: `Uang pembayaran kurang! Total Tagihan: Rp ${finalTotalAmount.toLocaleString("id-ID")}, Dibayar: Rp ${effectivePaid.toLocaleString("id-ID")}`,
         },
         { status: 400 }
       );
     }
 
-    const changeDue = Math.max(0, effectivePaid - totalAmount);
+    const changeDue = Math.max(0, effectivePaid - finalTotalAmount);
 
     // Generate Invoice Number yang 100% Unik & Anti-Duplikat: TRX-YYYYMMDD-XXXX
     const now = new Date();
@@ -178,11 +193,14 @@ export async function POST(req: Request) {
         data: {
           invoiceNumber,
           cashierId: activeCashierId!,
-          totalAmount,
+          totalAmount: finalTotalAmount,
           totalCost,
+          discountAmount,
           cashPaid: effectivePaid,
           changeDue,
           paymentMethod,
+          customerName: customerName ? customerName.trim() : null,
+          customerPhone: customerPhone ? customerPhone.trim() : null,
           items: {
             create: itemsToCreate.map((item) => ({
               productId: item.productId,
@@ -218,6 +236,27 @@ export async function POST(req: Request) {
             stock: {
               decrement: item.qty,
             },
+          },
+        });
+      }
+
+      // 3. Akumulasikan ke shift kasir yang sedang aktif jika ada
+      const activeShift = await tx.shift.findFirst({
+        where: {
+          status: "OPEN",
+          cashierId: activeCashierId!,
+        },
+        orderBy: { openedAt: "desc" },
+      });
+
+      if (activeShift) {
+        await tx.shift.update({
+          where: { id: activeShift.id },
+          data: {
+            totalTransactions: { increment: 1 },
+            ...(paymentMethod === "CASH"
+              ? { totalCashSales: { increment: finalTotalAmount } }
+              : { totalQrisSales: { increment: finalTotalAmount } }),
           },
         });
       }

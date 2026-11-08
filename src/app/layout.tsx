@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
@@ -20,6 +20,15 @@ export const metadata: Metadata = {
     shortcut: "/brand/logo-white-bg.png",
     apple: "/brand/logo-white-bg.png",
   },
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+  viewportFit: "cover",
+  themeColor: "#059669",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
