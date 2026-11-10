@@ -5,6 +5,8 @@ import { getSessionUser } from "@/lib/auth";
 interface CheckoutItemPayload {
   productId: string;
   qty: number;
+  unitType?: "PCS" | "PACK";
+  isBundle?: boolean;
 }
 
 export async function POST(req: Request) {
@@ -35,38 +37,77 @@ export async function POST(req: Request) {
       );
     }
 
-    // Ambil ID kasir dari session token yang sedang login jika tersedia
+    // Validasi sesi autentikasi kasir
     const sessionUser = await getSessionUser();
-    let activeCashierId = cashierId || sessionUser?.id;
+    if (!sessionUser) {
+      return NextResponse.json(
+        { success: false, message: "Sesi kasir tidak valid atau telah kedaluwarsa. Silakan login kembali." },
+        { status: 401 }
+      );
+    }
+    const activeCashierId = sessionUser.id;
 
-    if (!activeCashierId) {
-      const defaultCashier = await prisma.user.findFirst({
-        where: { role: "KARYAWAN" },
-      });
-      activeCashierId = defaultCashier?.id;
-      if (!activeCashierId) {
-        const anyUser = await prisma.user.findFirst();
-        activeCashierId = anyUser?.id;
+    // Validasi kuantitas setiap item (cegah manipulasi angka negatif / pecahan)
+    for (const item of items) {
+      if (!item.productId) {
+        return NextResponse.json(
+          { success: false, message: "ID barang pada keranjang belanja tidak valid." },
+          { status: 400 }
+        );
+      }
+      if (!item.qty || typeof item.qty !== "number" || item.qty <= 0 || !Number.isInteger(item.qty)) {
+        return NextResponse.json(
+          { success: false, message: "Jumlah kuantitas barang wajib berupa bilangan bulat positif (minimal 1)." },
+          { status: 400 }
+        );
       }
     }
 
-    if (!activeCashierId) {
-      return NextResponse.json(
-        { success: false, message: "Data kasir tidak valid atau belum terdaftar." },
-        { status: 400 }
-      );
-    }
+    // Pisahkan item bundle dan item produk reguler
+    const bundlePayloads = items.filter((i) => i.isBundle);
+    const regularPayloads = items.filter((i) => !i.isBundle);
 
-    // Ambil semua produk dari database untuk validasi stok & harga akurat
-    const productIds = items.map((i) => i.productId);
+    // Ambil data produk reguler
+    const regularProductIds = regularPayloads.map((i) => i.productId);
     const dbProducts = await prisma.product.findMany({
-      where: { id: { in: productIds } },
+      where: { id: { in: regularProductIds } },
     });
-
     const productMap = new Map(dbProducts.map((p) => [p.id, p]));
 
-    // Validasi stok setiap item
-    for (const item of items) {
+    // Ambil data bundle jika ada
+    const bundleIds = bundlePayloads.map((i) => i.productId);
+    const dbBundles = await prisma.bundle.findMany({
+      where: { id: { in: bundleIds } },
+      include: {
+        items: {
+          include: {
+            product: true,
+          },
+        },
+      },
+    });
+    const bundleMap = new Map(dbBundles.map((b) => [b.id, b]));
+
+    // Validasi stok & kalkulasi
+    let totalAmount = 0;
+    let totalCost = 0;
+
+    interface ProcessedItem {
+      productId?: string | null;
+      bundleId?: string | null;
+      itemTitle?: string;
+      unitType?: string;
+      qty: number;
+      costPrice: number;
+      sellingPrice: number;
+      subtotal: number;
+    }
+
+    const itemsToCreate: ProcessedItem[] = [];
+    const stockDeductions: { productId: string; qty: number }[] = [];
+
+    // 1. Proses Regular Products
+    for (const item of regularPayloads) {
       const product = productMap.get(item.productId);
       if (!product) {
         return NextResponse.json(
@@ -80,41 +121,94 @@ export async function POST(req: Request) {
           { status: 400 }
         );
       }
-      if (product.stock < item.qty) {
+
+      const isPack = item.unitType === "PACK" && product.hasPack && product.packPrice;
+      const effectivePrice = isPack ? (product.packPrice as number) : product.sellingPrice;
+      const packQtyMultiplier = isPack ? (product.packQuantity || 1) : 1;
+      const totalUnitsNeeded = item.qty * packQtyMultiplier;
+      const effectiveCost = product.costPrice * packQtyMultiplier;
+
+      if (product.stock < totalUnitsNeeded) {
         return NextResponse.json(
           {
             success: false,
-            message: `Stok produk "${product.name}" tidak mencukupi! Sisa stok: ${product.stock}, diminta: ${item.qty}.`,
+            message: `Stok produk "${product.name}" tidak mencukupi! Sisa stok: ${product.stock} pcs, dibutuhkan: ${totalUnitsNeeded} pcs (${item.qty} ${isPack ? product.packName || "Pack" : "Pcs"}).`,
           },
           { status: 400 }
         );
       }
-    }
 
-    // Hitung total nilai belanja dan total modal HPP
-    let totalAmount = 0;
-    let totalCost = 0;
-    const itemsToCreate: {
-      productId: string;
-      qty: number;
-      costPrice: number;
-      sellingPrice: number;
-      subtotal: number;
-    }[] = [];
-
-    for (const item of items) {
-      const product = productMap.get(item.productId)!;
-      const subtotal = product.sellingPrice * item.qty;
-      const subtotalCost = product.costPrice * item.qty;
+      const subtotal = effectivePrice * item.qty;
+      const subtotalCost = effectiveCost * item.qty;
 
       totalAmount += subtotal;
       totalCost += subtotalCost;
 
       itemsToCreate.push({
         productId: product.id,
+        itemTitle: isPack ? `${product.name} (${product.packName || "Pack"} @${product.packQuantity}pcs)` : product.name,
+        unitType: isPack ? "PACK" : "PCS",
         qty: item.qty,
-        costPrice: product.costPrice,
-        sellingPrice: product.sellingPrice,
+        costPrice: effectiveCost,
+        sellingPrice: effectivePrice,
+        subtotal,
+      });
+
+      stockDeductions.push({
+        productId: product.id,
+        qty: totalUnitsNeeded,
+      });
+    }
+
+    // 2. Proses Bundles
+    for (const item of bundlePayloads) {
+      const bundle = bundleMap.get(item.productId);
+      if (!bundle) {
+        return NextResponse.json(
+          { success: false, message: `Paket bundling dengan ID ${item.productId} tidak ditemukan.` },
+          { status: 404 }
+        );
+      }
+      if (!bundle.isActive) {
+        return NextResponse.json(
+          { success: false, message: `Paket bundling "${bundle.name}" sedang dinonaktifkan.` },
+          { status: 400 }
+        );
+      }
+
+      // Hitung HPP bundling dari total modal barang penyusunnya
+      let bundleUnitCost = 0;
+      for (const comp of bundle.items) {
+        const requiredStock = comp.qty * item.qty;
+        if (comp.product.stock < requiredStock) {
+          return NextResponse.json(
+            {
+              success: false,
+              message: `Stok komponen "${comp.product.name}" untuk paket promo "${bundle.name}" tidak mencukupi! Sisa stok: ${comp.product.stock}, dibutuhkan: ${requiredStock}.`,
+            },
+            { status: 400 }
+          );
+        }
+        bundleUnitCost += comp.product.costPrice * comp.qty;
+        stockDeductions.push({
+          productId: comp.productId,
+          qty: requiredStock,
+        });
+      }
+
+      const subtotal = bundle.price * item.qty;
+      const subtotalCost = bundleUnitCost * item.qty;
+
+      totalAmount += subtotal;
+      totalCost += subtotalCost;
+
+      itemsToCreate.push({
+        bundleId: bundle.id,
+        itemTitle: `[PAKET] ${bundle.name}`,
+        unitType: "BUNDLE",
+        qty: item.qty,
+        costPrice: bundleUnitCost,
+        sellingPrice: bundle.price,
         subtotal,
       });
     }
@@ -145,7 +239,6 @@ export async function POST(req: Request) {
     const dateStr = `${yyyy}${mm}${dd}`;
     const prefix = `TRX-${dateStr}-`;
 
-    // Cari invoice terakhir yang dibuat dengan prefix tanggal ini
     const latestTx = await prisma.transaction.findFirst({
       where: {
         invoiceNumber: {
@@ -170,7 +263,6 @@ export async function POST(req: Request) {
       }
     }
 
-    // Pastikan nomor kandidat belum pernah digunakan (mencegah unique constraint collision)
     let invoiceNumber = `${prefix}${String(nextSeq).padStart(4, "0")}`;
     let existingInv = await prisma.transaction.findUnique({
       where: { invoiceNumber },
@@ -188,7 +280,7 @@ export async function POST(req: Request) {
 
     // Eksekusi Atomic Transaction di Database
     const result = await prisma.$transaction(async (tx) => {
-      // 1. Buat Header Transaksi
+      // 1. Buat Header Transaksi & Detail Items
       const transaction = await tx.transaction.create({
         data: {
           invoiceNumber,
@@ -203,7 +295,10 @@ export async function POST(req: Request) {
           customerPhone: customerPhone ? customerPhone.trim() : null,
           items: {
             create: itemsToCreate.map((item) => ({
-              productId: item.productId,
+              productId: item.productId || null,
+              bundleId: item.bundleId || null,
+              itemTitle: item.itemTitle || null,
+              unitType: item.unitType || "PCS",
               qty: item.qty,
               costPrice: item.costPrice,
               sellingPrice: item.sellingPrice,
@@ -215,6 +310,7 @@ export async function POST(req: Request) {
           items: {
             include: {
               product: true,
+              bundle: true,
             },
           },
           cashier: {
@@ -228,13 +324,22 @@ export async function POST(req: Request) {
         },
       });
 
-      // 2. Decrement stok masing-masing produk secara aman
-      for (const item of items) {
+      // 2. Decrement stok fisik produk (termasuk komponen bundle dan pack multiplier)
+      // Gabungkan pengurangan stok per productId agar atomic
+      const aggregatedDeductions = new Map<string, number>();
+      for (const ded of stockDeductions) {
+        aggregatedDeductions.set(
+          ded.productId,
+          (aggregatedDeductions.get(ded.productId) || 0) + ded.qty
+        );
+      }
+
+      for (const [prodId, qtyToDec] of aggregatedDeductions.entries()) {
         await tx.product.update({
-          where: { id: item.productId },
+          where: { id: prodId },
           data: {
             stock: {
-              decrement: item.qty,
+              decrement: qtyToDec,
             },
           },
         });
@@ -281,4 +386,3 @@ export async function POST(req: Request) {
     );
   }
 }
-

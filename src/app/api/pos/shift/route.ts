@@ -2,27 +2,43 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSessionUser } from "@/lib/auth";
 
-// GET: Ambil status shift kasir aktif saat ini
+// GET: Ambil status shift kasir aktif saat ini dengan kalkulasi transaksi riil dari database
 export async function GET() {
   try {
     const sessionUser = await getSessionUser();
-    const cashierId = sessionUser?.id;
-
-    let activeShift = null;
-    if (cashierId) {
-      activeShift = await prisma.shift.findFirst({
-        where: {
-          cashierId,
-          status: "OPEN",
-        },
-        orderBy: { openedAt: "desc" },
-      });
+    if (!sessionUser) {
+      return NextResponse.json(
+        { success: false, message: "Sesi kasir tidak valid atau belum login." },
+        { status: 401 }
+      );
     }
 
-    if (!activeShift) {
-      activeShift = await prisma.shift.findFirst({
-        where: { status: "OPEN" },
-        orderBy: { openedAt: "desc" },
+    const cashierId = sessionUser.id;
+    const cashierName = sessionUser.name || "Kasir";
+
+    // 1. Cari shift yang masih OPEN untuk kasir ini
+    let activeShift = await prisma.shift.findFirst({
+      where: {
+        cashierId,
+        status: "OPEN",
+      },
+      orderBy: { openedAt: "desc" },
+    });
+
+    // Jika belum ada shift OPEN sama sekali untuk hari ini, otomatis inisialisasi shift aktif!
+    if (!activeShift && cashierId) {
+      const startOfDay = new Date();
+      startOfDay.setHours(0, 0, 0, 0);
+
+      activeShift = await prisma.shift.create({
+        data: {
+          cashierId,
+          cashierName,
+          shiftType: "SHIFT_1",
+          openingFloat: 100000,
+          status: "OPEN",
+          openedAt: startOfDay,
+        },
       });
     }
 
@@ -30,21 +46,61 @@ export async function GET() {
       return NextResponse.json({
         success: true,
         data: null,
-        message: "Tidak ada shift kasir yang sedang aktif.",
+        message: "Tidak ada data kasir.",
       });
     }
 
-    const expectedCash = activeShift.openingFloat + activeShift.totalCashSales;
+    // 2. HITUNG RIIL TRANSAKSI DARI TABEL `Transaction` (Anti Selisih / Realtime - Kecuali VOID)
+    // Ambil semua transaksi aktif oleh kasir ini sejak shift dibuka
+    const transactions = await prisma.transaction.findMany({
+      where: {
+        cashierId: activeShift.cashierId,
+        createdAt: {
+          gte: activeShift.openedAt,
+        },
+        status: { not: "VOIDED" },
+      },
+      select: {
+        id: true,
+        totalAmount: true,
+        paymentMethod: true,
+      },
+    });
+
+    let totalCashSales = 0;
+    let totalQrisSales = 0;
+    for (const tx of transactions) {
+      if (tx.paymentMethod === "CASH") {
+        totalCashSales += tx.totalAmount;
+      } else {
+        totalQrisSales += tx.totalAmount;
+      }
+    }
+
+    const totalTransactions = transactions.length;
+    const expectedCash = activeShift.openingFloat + totalCashSales;
+
+    // Sinkronkan ke database shift
+    const updatedShift = await prisma.shift.update({
+      where: { id: activeShift.id },
+      data: {
+        totalCashSales,
+        totalQrisSales,
+        totalTransactions,
+        expectedCash,
+      },
+    });
 
     return NextResponse.json({
       success: true,
       data: {
-        ...activeShift,
+        ...updatedShift,
         expectedCash,
       },
     });
   } catch (error: unknown) {
-    const errMsg = error instanceof Error ? error.message : "Terjadi kesalahan";
+    const errMsg = error instanceof Error ? error.message : "Terjadi kesalahan internal";
+    console.error("GET /api/pos/shift error:", errMsg);
     return NextResponse.json({ success: false, message: errMsg }, { status: 500 });
   }
 }
@@ -53,14 +109,21 @@ export async function GET() {
 export async function POST(req: Request) {
   try {
     const sessionUser = await getSessionUser();
+    if (!sessionUser) {
+      return NextResponse.json(
+        { success: false, message: "Sesi kasir tidak valid atau belum login." },
+        { status: 401 }
+      );
+    }
+
     const body = await req.json();
     const { action, shiftType = "SHIFT_1", openingFloat = 100000, shiftId, closingCash, notes } = body;
 
-    const cashierId = sessionUser?.id || "default-cashier";
-    const cashierName = sessionUser?.name || "Kasir";
+    const cashierId = sessionUser.id;
+    const cashierName = sessionUser.name || "Kasir";
 
     if (action === "OPEN") {
-      // Periksa apakah kasir ini sudah punya shift yang masih terbuka
+      // Periksa apakah sudah ada shift yang OPEN untuk kasir ini
       const existingOpen = await prisma.shift.findFirst({
         where: {
           cashierId,
@@ -69,10 +132,19 @@ export async function POST(req: Request) {
       });
 
       if (existingOpen) {
+        // Perbarui modal awal & tipe shift jika user mengubahnya di login
+        const updated = await prisma.shift.update({
+          where: { id: existingOpen.id },
+          data: {
+            shiftType,
+            openingFloat: Number(openingFloat) || existingOpen.openingFloat,
+          },
+        });
+
         return NextResponse.json({
           success: true,
-          data: existingOpen,
-          message: "Shift kasir sebelumnya masih aktif.",
+          data: updated,
+          message: "Shift kasir diperbarui.",
         });
       }
 
@@ -94,11 +166,9 @@ export async function POST(req: Request) {
     }
 
     if (action === "CLOSE") {
-      const targetId = shiftId;
       let shift = null;
-
-      if (targetId) {
-        shift = await prisma.shift.findUnique({ where: { id: targetId } });
+      if (shiftId) {
+        shift = await prisma.shift.findUnique({ where: { id: shiftId } });
       } else {
         shift = await prisma.shift.findFirst({
           where: { cashierId, status: "OPEN" },
@@ -106,21 +176,50 @@ export async function POST(req: Request) {
         });
       }
 
-      if (!shift || shift.status !== "OPEN") {
+      if (!shift) {
         return NextResponse.json(
           { success: false, message: "Shift kasir aktif tidak ditemukan untuk ditutup." },
           { status: 404 }
         );
       }
 
+      // Ambil transaksi riil terkini untuk shift ini (Hanya transaksi valid non-VOID)
+      const transactions = await prisma.transaction.findMany({
+        where: {
+          cashierId: shift.cashierId,
+          createdAt: {
+            gte: shift.openedAt,
+          },
+          status: { not: "VOIDED" },
+        },
+        select: {
+          totalAmount: true,
+          paymentMethod: true,
+        },
+      });
+
+      let totalCashSales = 0;
+      let totalQrisSales = 0;
+      for (const tx of transactions) {
+        if (tx.paymentMethod === "CASH") {
+          totalCashSales += tx.totalAmount;
+        } else {
+          totalQrisSales += tx.totalAmount;
+        }
+      }
+
+      const totalTransactions = transactions.length;
+      const expectedCash = shift.openingFloat + totalCashSales;
       const parsedClosingCash = Number(closingCash) || 0;
-      const expectedCash = shift.openingFloat + shift.totalCashSales;
       const discrepancy = parsedClosingCash - expectedCash;
 
       const closedShift = await prisma.shift.update({
         where: { id: shift.id },
         data: {
           status: "CLOSED",
+          totalCashSales,
+          totalQrisSales,
+          totalTransactions,
           closingCash: parsedClosingCash,
           expectedCash,
           notes: notes ? notes.trim() : null,
@@ -141,6 +240,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ success: false, message: "Aksi tidak dikenali." }, { status: 400 });
   } catch (error: unknown) {
     const errMsg = error instanceof Error ? error.message : "Terjadi kesalahan internal";
+    console.error("POST /api/pos/shift error:", errMsg);
     return NextResponse.json({ success: false, message: errMsg }, { status: 500 });
   }
 }

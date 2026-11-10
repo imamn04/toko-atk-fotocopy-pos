@@ -37,8 +37,11 @@ import {
   Calculator,
   Lock,
   Layers,
-  Sparkles
+  Sparkles,
+  QrCode as QrCodeIcon
 } from "lucide-react";
+import QRCode from "qrcode";
+import { makeDynamicQris } from "@/lib/qris";
 import { printThermalReceipt } from "@/lib/receiptPrinter";
 import CameraBarcodeScanner from "@/components/CameraBarcodeScanner";
 import CopyPrintCalculatorModal from "@/components/CopyPrintCalculatorModal";
@@ -59,6 +62,12 @@ interface ProductItem {
   category?: {
     name: string;
   };
+  hasPack?: boolean;
+  packName?: string | null;
+  packQuantity?: number | null;
+  packPrice?: number | null;
+  isBundle?: boolean;
+  bundleItems?: any[];
 }
 
 interface CategoryItem {
@@ -69,6 +78,7 @@ interface CategoryItem {
 interface CartItem {
   product: ProductItem;
   qty: number;
+  unitType?: "PCS" | "PACK";
   subtotal: number;
 }
 
@@ -83,9 +93,13 @@ interface CompletedTransaction {
     name: string;
   };
   items: {
-    product: {
+    product?: {
       name: string;
-    };
+    } | null;
+    bundle?: {
+      name: string;
+    } | null;
+    itemTitle?: string | null;
     qty: number;
     sellingPrice: number;
     subtotal: number;
@@ -259,6 +273,17 @@ export default function PosPage() {
   // Modal Struk Sukses
   const [completedTx, setCompletedTx] = useState<CompletedTransaction | null>(null);
 
+  // Pengaturan Toko & QRIS Dinamis
+  const [storeSetting, setStoreSetting] = useState<{
+    storeName: string;
+    storeAddress?: string | null;
+    storePhone?: string | null;
+    qrisImageUrl?: string | null;
+    qrisRawPayload?: string | null;
+    bankAccountInfo?: string | null;
+  } | null>(null);
+  const [dynamicQrisQrUrl, setDynamicQrisQrUrl] = useState<string>("");
+
   // Ref input scanner agar selalu auto-focus
   const barcodeInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -364,10 +389,37 @@ export default function PosPage() {
     }
 
     initCatalog();
+
+    // Ambil konfigurasi toko & QRIS
+    fetch("/api/admin/settings")
+      .then((res) => res.json())
+      .then((json) => {
+        if (!ignore && json.success && json.data) {
+          setStoreSetting(json.data);
+        }
+      })
+      .catch((e) => console.error("Error fetching settings:", e));
+
     return () => {
       ignore = true;
     };
   }, [selectedCategory]);
+
+  // Generate dynamic QRIS ketika metode QRIS dipilih
+  useEffect(() => {
+    if (showPaymentModal && paymentMethod === "QRIS") {
+      if (storeSetting?.qrisRawPayload) {
+        try {
+          const dynamicPayload = makeDynamicQris(storeSetting.qrisRawPayload, totalAmount);
+          QRCode.toDataURL(dynamicPayload, { width: 280, margin: 2 })
+            .then((url) => setDynamicQrisQrUrl(url))
+            .catch((err) => console.error("QR Code Error:", err));
+        } catch (err) {
+          console.error("makeDynamicQris Error:", err);
+        }
+      }
+    }
+  }, [showPaymentModal, paymentMethod, totalAmount, storeSetting]);
 
   // Auto-focus scanner
   const focusScanner = useCallback(() => {
@@ -514,22 +566,29 @@ export default function PosPage() {
     };
   }, [focusScanner, showPaymentModal, completedTx, showHeldOrdersModal, handleOpenPayment, cart.length, handleHoldCurrentOrder]);
 
-  // Tambahkan produk ke keranjang
-  const addToCart = (product: ProductItem, qtyToAdd: number = 1) => {
-    if (product.stock <= 0) {
-      notify(`Stok "${product.name}" habis (0)!`, "error");
+  // Tambahkan produk ke keranjang (Mendukung Multi-Satuan Pcs vs Pack)
+  const addToCart = (product: ProductItem, qtyToAdd: number = 1, unitType: "PCS" | "PACK" = "PCS") => {
+    const isPack = unitType === "PACK" && product.hasPack && product.packPrice;
+    const effectivePrice = isPack ? (product.packPrice as number) : product.sellingPrice;
+    const multiplier = isPack ? (product.packQuantity || 1) : 1;
+    const stockNeeded = qtyToAdd * multiplier;
+
+    if (product.stock < stockNeeded) {
+      notify(`Stok "${product.name}" tidak mencukupi untuk ${qtyToAdd} ${isPack ? product.packName || "Pack" : "Pcs"}!`, "error");
       return;
     }
 
     setCart((prev) => {
-      const existingIndex = prev.findIndex((item) => item.product.id === product.id);
+      const existingIndex = prev.findIndex(
+        (item) => item.product.id === product.id && (item.unitType || "PCS") === unitType
+      );
 
       if (existingIndex > -1) {
         const currentQty = prev[existingIndex].qty;
         const newQty = currentQty + qtyToAdd;
 
-        if (newQty > product.stock) {
-          notify(`Stok produk "${product.name}" hanya tersisa ${product.stock}`, "error");
+        if (newQty * multiplier > product.stock) {
+          notify(`Stok produk "${product.name}" hanya tersisa ${product.stock} pcs!`, "error");
           return prev;
         }
 
@@ -537,49 +596,49 @@ export default function PosPage() {
         updated[existingIndex] = {
           ...updated[existingIndex],
           qty: newQty,
-          subtotal: newQty * product.sellingPrice,
+          subtotal: newQty * effectivePrice,
         };
         return updated;
       } else {
-        if (qtyToAdd > product.stock) {
-          notify(`Stok produk "${product.name}" hanya tersisa ${product.stock}`, "error");
-          return prev;
-        }
-
         return [
           {
             product,
             qty: qtyToAdd,
-            subtotal: qtyToAdd * product.sellingPrice,
+            unitType,
+            subtotal: qtyToAdd * effectivePrice,
           },
           ...prev,
         ];
       }
     });
 
-    notify(`+1 ${product.name}`, "success");
+    notify(`+${qtyToAdd} ${isPack ? product.packName || "Pack" : "Pcs"} ${product.name}`, "success");
     playBeepSound();
     focusScanner();
   };
 
   // Update Qty produk di keranjang
-  const updateQty = (productId: string, newQty: number) => {
+  const updateQty = (productId: string, newQty: number, unitType: "PCS" | "PACK" = "PCS") => {
     if (newQty <= 0) {
-      removeFromCart(productId);
+      removeFromCart(productId, unitType);
       return;
     }
 
     setCart((prev) =>
       prev.map((item) => {
-        if (item.product.id === productId) {
-          if (newQty > item.product.stock) {
-            notify(`Stok maksimal tersisa: ${item.product.stock}`, "error");
+        if (item.product.id === productId && (item.unitType || "PCS") === unitType) {
+          const isPack = unitType === "PACK" && item.product.hasPack && item.product.packPrice;
+          const effectivePrice = isPack ? (item.product.packPrice as number) : item.product.sellingPrice;
+          const multiplier = isPack ? (item.product.packQuantity || 1) : 1;
+
+          if (newQty * multiplier > item.product.stock) {
+            notify(`Stok produk hanya tersisa ${item.product.stock} pcs!`, "error");
             return item;
           }
           return {
             ...item,
             qty: newQty,
-            subtotal: newQty * item.product.sellingPrice,
+            subtotal: newQty * effectivePrice,
           };
         }
         return item;
@@ -588,9 +647,40 @@ export default function PosPage() {
   };
 
   // Hapus item dari keranjang
-  const removeFromCart = (productId: string) => {
-    setCart((prev) => prev.filter((item) => item.product.id !== productId));
+  const removeFromCart = (productId: string, unitType: "PCS" | "PACK" = "PCS") => {
+    setCart((prev) =>
+      prev.filter(
+        (item) => !(item.product.id === productId && (item.unitType || "PCS") === unitType)
+      )
+    );
     focusScanner();
+  };
+
+  // Toggle Pcs vs Pack di dalam keranjang
+  const toggleCartUnit = (item: CartItem) => {
+    if (!item.product.hasPack || !item.product.packPrice) return;
+    const targetUnit = item.unitType === "PACK" ? "PCS" : "PACK";
+    const targetPrice = targetUnit === "PACK" ? item.product.packPrice : item.product.sellingPrice;
+    const targetMultiplier = targetUnit === "PACK" ? (item.product.packQuantity || 1) : 1;
+
+    if (item.qty * targetMultiplier > item.product.stock) {
+      notify(`Stok fisik (${item.product.stock} pcs) tidak cukup untuk beralih ke satuan ${targetUnit}!`, "error");
+      return;
+    }
+
+    setCart((prev) =>
+      prev.map((it) => {
+        if (it === item) {
+          return {
+            ...it,
+            unitType: targetUnit,
+            subtotal: it.qty * targetPrice,
+          };
+        }
+        return it;
+      })
+    );
+    notify(`Beralih ke satuan ${targetUnit} (${item.product.name})`, "info");
   };
 
   // Kosongkan keranjang
@@ -669,6 +759,8 @@ export default function PosPage() {
         items: cart.map((c) => ({
           productId: c.product.id,
           qty: c.qty,
+          unitType: c.unitType || "PCS",
+          isBundle: !!c.product.isBundle,
         })),
         cashPaid: paymentMethod === "CASH" ? cashPaidInput : totalAmount,
         discountAmount,
@@ -781,7 +873,10 @@ export default function PosPage() {
           {/* Shift & Kas Laci Awal Badge (Bisa Diklik untuk Tutup Shift & Setor Laci) */}
           <button
             type="button"
-            onClick={() => setShowShiftCloseModal(true)}
+            onClick={async () => {
+              await fetchActiveShift();
+              setShowShiftCloseModal(true);
+            }}
             className="flex items-center gap-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-300 px-2.5 py-1.5 rounded-xl text-xs font-bold transition shadow-2xs active:scale-95 cursor-pointer"
             title="Klik untuk melihat rekap laci uang atau tutup shift kasir (Z-Report)"
           >
@@ -1024,47 +1119,74 @@ export default function PosPage() {
                         </div>
 
                         {/* Nama Produk */}
-                        <h4
-                          className="font-bold text-slate-800 text-xs md:text-sm line-clamp-2 group-hover:text-emerald-700 transition"
-                          title={p.name}
-                        >
-                          {p.name}
-                        </h4>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          {p.isBundle && (
+                            <span className="text-[9px] font-black bg-indigo-600 text-white px-1.5 py-0.5 rounded">
+                              PAKET PROMO
+                            </span>
+                          )}
+                          <h4
+                            className="font-bold text-slate-800 text-xs md:text-sm line-clamp-2 group-hover:text-emerald-700 transition"
+                            title={p.name}
+                          >
+                            {p.name}
+                          </h4>
+                        </div>
                       </div>
 
-                      <div className="mt-3 pt-2 border-t border-slate-100 flex items-center justify-between">
-                        {/* Harga */}
-                        <div>
-                          <div className="text-[10px] text-slate-400 font-medium">Harga Satuan</div>
-                          <div className="text-sm sm:text-base font-black text-slate-900 group-hover:text-emerald-700 transition">
-                            Rp {p.sellingPrice.toLocaleString("id-ID")}
+                      <div className="mt-2.5 pt-2 border-t border-slate-100">
+                        <div className="flex items-center justify-between">
+                          {/* Harga */}
+                          <div>
+                            <div className="text-[10px] text-slate-400 font-medium">
+                              {p.hasPack ? "Harga Pcs" : "Harga Satuan"}
+                            </div>
+                            <div className="text-sm sm:text-base font-black text-slate-900 group-hover:text-emerald-700 transition">
+                              Rp {p.sellingPrice.toLocaleString("id-ID")}
+                            </div>
+                          </div>
+
+                          {/* Badge Stok & Quick Add Action */}
+                          <div className="flex items-center gap-1.5">
+                            {isOutOfStock ? (
+                              <span className="text-[10px] font-bold text-rose-700 bg-rose-50 border border-rose-200 px-2 py-0.5 rounded-lg">
+                                Habis
+                              </span>
+                            ) : isLowStock ? (
+                              <span className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-lg flex items-center gap-1">
+                                <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                                Sisa {p.stock}
+                              </span>
+                            ) : (
+                              <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-lg flex items-center gap-1">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                                {p.stock} pcs
+                              </span>
+                            )}
+
+                            {!isOutOfStock && (
+                              <div className={`w-7 h-7 rounded-xl flex items-center justify-center transition shrink-0 shadow-xs font-black ${catMeta.addBtn}`}>
+                                <Plus className="w-3.5 h-3.5" />
+                              </div>
+                            )}
                           </div>
                         </div>
 
-                        {/* Badge Stok & Quick Add Action */}
-                        <div className="flex items-center gap-1.5">
-                          {isOutOfStock ? (
-                            <span className="text-[10px] font-bold text-rose-700 bg-rose-50 border border-rose-200 px-2 py-0.5 rounded-lg">
-                              Habis
-                            </span>
-                          ) : isLowStock ? (
-                            <span className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-lg flex items-center gap-1">
-                              <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-                              Sisa {p.stock}
-                            </span>
-                          ) : (
-                            <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-lg flex items-center gap-1">
-                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                              {p.stock} pcs
-                            </span>
-                          )}
-
-                          {!isOutOfStock && (
-                            <div className={`w-7 h-7 rounded-xl flex items-center justify-center transition shrink-0 shadow-xs font-black ${catMeta.addBtn}`}>
-                              <Plus className="w-3.5 h-3.5" />
-                            </div>
-                          )}
-                        </div>
+                        {/* Tombol Cepat Beli Satuan Pack */}
+                        {p.hasPack && p.packPrice && !isOutOfStock && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              addToCart(p, 1, "PACK");
+                            }}
+                            className="mt-2 w-full py-1.5 px-2 bg-blue-50 hover:bg-blue-600 hover:text-white text-blue-800 text-[11px] font-black rounded-xl border border-blue-200 hover:border-blue-600 transition flex items-center justify-between"
+                            title={`Beli 1 ${p.packName || "Pack"} (@${p.packQuantity} pcs)`}
+                          >
+                            <span>+ 1 {p.packName || "Pack"} ({p.packQuantity}pcs)</span>
+                            <span>Rp {p.packPrice.toLocaleString("id-ID")}</span>
+                          </button>
+                        )}
                       </div>
                     </div>
                   );
@@ -1247,62 +1369,93 @@ export default function PosPage() {
                 </p>
               </div>
             ) : (
-              cart.map((item) => (
-                <div key={item.product.id} className="py-3 first:pt-0 last:pb-0 flex items-center justify-between gap-3">
-                  <div className="flex-1 min-w-0">
-                    <h5 className="font-bold text-xs text-slate-800 truncate" title={item.product.name}>
-                      {item.product.name}
-                    </h5>
-                    <div className="text-[11px] text-slate-400 font-mono mt-0.5">
-                      Rp {item.product.sellingPrice.toLocaleString("id-ID")}
-                    </div>
-                  </div>
+              cart.map((item) => {
+                const isPack = item.unitType === "PACK" && item.product.hasPack && item.product.packPrice;
+                const unitPrice = isPack ? (item.product.packPrice as number) : item.product.sellingPrice;
+                const itemKey = `${item.product.id}-${item.unitType || "PCS"}`;
 
-                  {/* Kontrol Qty */}
-                  <div className="flex items-center gap-2 shrink-0">
-                    <div className="inline-flex items-center border border-slate-300 rounded-lg bg-slate-50 overflow-hidden shadow-xs">
-                      <button
-                        type="button"
-                        onClick={() => updateQty(item.product.id, item.qty - 1)}
-                        className="p-1.5 text-slate-600 hover:bg-slate-200 transition"
-                      >
-                        <Minus className="w-3 h-3" />
-                      </button>
-                      <input
-                        type="number"
-                        min={1}
-                        max={item.product.stock}
-                        value={item.qty}
-                        onChange={(e) => updateQty(item.product.id, parseInt(e.target.value) || 1)}
-                        className="w-12 sm:w-14 text-center text-xs font-bold text-slate-900 bg-white focus:outline-none"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => updateQty(item.product.id, item.qty + 1)}
-                        className="p-1.5 text-slate-600 hover:bg-slate-200 transition"
-                      >
-                        <Plus className="w-3 h-3" />
-                      </button>
-                    </div>
+                return (
+                  <div key={itemKey} className="py-3 first:pt-0 last:pb-0 flex items-center justify-between gap-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        {item.product.isBundle && (
+                          <span className="text-[9px] font-black bg-indigo-100 text-indigo-800 px-1.5 py-0.5 rounded">
+                            PROMO
+                          </span>
+                        )}
+                        <h5 className="font-bold text-xs text-slate-800 truncate" title={item.product.name}>
+                          {item.product.name}
+                        </h5>
+                      </div>
 
-                    {/* Subtotal */}
-                    <div className="text-right w-20">
-                      <div className="text-xs font-black text-slate-900">
-                        Rp {item.subtotal.toLocaleString("id-ID")}
+                      <div className="flex items-center gap-2 mt-1">
+                        <span className="text-[11px] text-slate-500 font-mono">
+                          Rp {unitPrice.toLocaleString("id-ID")}
+                        </span>
+
+                        {/* Multi-Satuan Switcher Button */}
+                        {item.product.hasPack && item.product.packPrice && (
+                          <button
+                            type="button"
+                            onClick={() => toggleCartUnit(item)}
+                            className={`text-[10px] font-black px-2 py-0.5 rounded-lg border transition ${
+                              isPack
+                                ? "bg-blue-600 text-white border-blue-600"
+                                : "bg-slate-100 hover:bg-blue-50 text-slate-700 border-slate-300"
+                            }`}
+                            title="Klik untuk beralih antara satuan Pcs dan Pack"
+                          >
+                            {isPack ? `${item.product.packName || "Pack"} (@${item.product.packQuantity})` : "Pcs (Eceran)"}
+                          </button>
+                        )}
                       </div>
                     </div>
 
-                    {/* Delete */}
-                    <button
-                      type="button"
-                      onClick={() => removeFromCart(item.product.id)}
-                      className="p-1 text-slate-300 hover:text-rose-600 rounded transition"
-                    >
-                      <X className="w-3.5 h-3.5" />
-                    </button>
+                    {/* Kontrol Qty */}
+                    <div className="flex items-center gap-2 shrink-0">
+                      <div className="inline-flex items-center border border-slate-300 rounded-lg bg-slate-50 overflow-hidden shadow-xs">
+                        <button
+                          type="button"
+                          onClick={() => updateQty(item.product.id, item.qty - 1, item.unitType)}
+                          className="p-1.5 text-slate-600 hover:bg-slate-200 transition"
+                        >
+                          <Minus className="w-3 h-3" />
+                        </button>
+                        <input
+                          type="number"
+                          min={1}
+                          value={item.qty}
+                          onChange={(e) => updateQty(item.product.id, parseInt(e.target.value) || 1, item.unitType)}
+                          className="w-12 sm:w-14 text-center text-xs font-bold text-slate-900 bg-white focus:outline-none"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => updateQty(item.product.id, item.qty + 1, item.unitType)}
+                          className="p-1.5 text-slate-600 hover:bg-slate-200 transition"
+                        >
+                          <Plus className="w-3 h-3" />
+                        </button>
+                      </div>
+
+                      {/* Subtotal */}
+                      <div className="text-right w-20">
+                        <div className="text-xs font-black text-slate-900">
+                          Rp {item.subtotal.toLocaleString("id-ID")}
+                        </div>
+                      </div>
+
+                      {/* Delete */}
+                      <button
+                        type="button"
+                        onClick={() => removeFromCart(item.product.id, item.unitType)}
+                        className="p-1 text-slate-300 hover:text-rose-600 rounded transition"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   </div>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
 
@@ -1557,9 +1710,62 @@ export default function PosPage() {
                 </div>
               )}
 
-              {paymentMethod !== "CASH" && (
-                <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl text-center text-xs text-slate-600">
-                  Pembayaran non-tunai ({paymentMethod}) terverifikasi sejumlah <b>Rp {totalAmount.toLocaleString("id-ID")}</b> (Uang pas).
+              {/* TAMPILAN QRIS DINAMIS / MERCHANT REKENING TOKO */}
+              {paymentMethod === "QRIS" && (
+                <div className="p-4 bg-slate-50 border-2 border-indigo-200 rounded-2xl flex flex-col items-center justify-center text-center space-y-3">
+                  <div className="flex items-center gap-2 text-indigo-700 font-extrabold text-xs">
+                    <QrCodeIcon className="w-4 h-4" />
+                    <span>QRIS MERCHANT TOKO (100% MASUK REKENING TOKO)</span>
+                  </div>
+
+                  {dynamicQrisQrUrl ? (
+                    <div className="bg-white p-3 rounded-2xl border-2 border-slate-300 shadow-md">
+                      <img
+                        src={dynamicQrisQrUrl}
+                        alt="QRIS Dinamis"
+                        className="w-56 h-56 object-contain"
+                      />
+                      <div className="mt-1 text-[11px] font-black text-slate-800">
+                        Total Tagihan: Rp {totalAmount.toLocaleString("id-ID")}
+                      </div>
+                    </div>
+                  ) : storeSetting?.qrisImageUrl ? (
+                    <div className="bg-white p-3 rounded-2xl border-2 border-slate-300 shadow-md">
+                      <img
+                        src={storeSetting.qrisImageUrl}
+                        alt="QRIS Merchant Toko"
+                        className="w-56 h-56 object-contain"
+                      />
+                      <div className="mt-1 text-[11px] font-black text-slate-800">
+                        {storeSetting.storeName || "FOCUS MARAJA"} • Rp {totalAmount.toLocaleString("id-ID")}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="w-52 h-52 bg-slate-200/80 rounded-2xl flex flex-col items-center justify-center p-4 border border-dashed border-slate-400">
+                      <QrCodeIcon className="w-12 h-12 text-slate-400 mb-2" />
+                      <p className="text-xs font-bold text-slate-700">QRIS Toko Belum Diupload</p>
+                      <p className="text-[10px] text-slate-500 mt-1">
+                        Upload barcode QRIS Anda di menu Backoffice Admin &gt; Pengaturan Toko &amp; QRIS.
+                      </p>
+                    </div>
+                  )}
+
+                  <div className="bg-amber-50 border border-amber-200 rounded-xl p-2.5 text-xs text-amber-900 font-medium max-w-sm">
+                    <strong>Panduan Kasir:</strong> Arahkan pelanggan untuk men-scan barcode QRIS di atas. Pastikan uang sejumlah <b>Rp {totalAmount.toLocaleString("id-ID")}</b> sudah masuk ke notifikasi rekening toko sebelum menekan tombol Selesaikan Transaksi.
+                  </div>
+                </div>
+              )}
+
+              {/* TAMPILAN TRANSFER BANK MANUAL */}
+              {paymentMethod === "TRANSFER" && (
+                <div className="p-4 bg-slate-50 border-2 border-blue-200 rounded-2xl space-y-2 text-center">
+                  <div className="text-xs font-black text-blue-900 uppercase">Transfer Bank Manual Toko</div>
+                  <div className="bg-white p-3.5 rounded-xl border border-blue-200 text-sm font-black text-slate-900 font-mono">
+                    {storeSetting?.bankAccountInfo || "BCA 1234567890 a.n FOCUS MARAJA (Atur di Admin)"}
+                  </div>
+                  <p className="text-xs text-slate-600">
+                    Pastikan struk/bukti mutasi transfer bank berhasil valid sejumlah <b>Rp {totalAmount.toLocaleString("id-ID")}</b> sebelum konfirmasi.
+                  </p>
                 </div>
               )}
             </div>
@@ -1706,17 +1912,20 @@ export default function PosPage() {
 
                 {/* Item Pembelian */}
                 <div className="py-2.5 border-b border-dashed border-slate-400 space-y-2 max-h-48 overflow-y-auto pr-1">
-                  {completedTx.items.map((item, idx) => (
-                    <div key={idx} className="space-y-0.5">
-                      <div className="font-bold text-slate-900 truncate">
-                        {item.product.name}
+                  {completedTx.items.map((item, idx) => {
+                    const itemName = item.itemTitle || item.product?.name || item.bundle?.name || "Item ATK";
+                    return (
+                      <div key={idx} className="space-y-0.5">
+                        <div className="font-bold text-slate-900 truncate">
+                          {itemName}
+                        </div>
+                        <div className="flex justify-between text-slate-600 text-[10px]">
+                          <span>{item.qty} x Rp {item.sellingPrice.toLocaleString("id-ID")}</span>
+                          <span className="font-bold text-slate-900">Rp {item.subtotal.toLocaleString("id-ID")}</span>
+                        </div>
                       </div>
-                      <div className="flex justify-between text-slate-600 text-[10px]">
-                        <span>{item.qty} x Rp {item.sellingPrice.toLocaleString("id-ID")}</span>
-                        <span className="font-bold text-slate-900">Rp {item.subtotal.toLocaleString("id-ID")}</span>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
 
                 {/* Kalkulasi Total */}
