@@ -13,10 +13,12 @@ export function formatWhatsAppReceiptText(tx: ReceiptData, storeName = "FOCUS MA
 
   const itemsList = tx.items
     .map(
-      (it, idx) =>
-        `${idx + 1}. *${it.product.name}*\n   ${it.qty} x Rp ${it.sellingPrice.toLocaleString(
+      (it, idx) => {
+        const name = it.itemTitle || it.product?.name || it.bundle?.name || "Item ATK";
+        return `${idx + 1}. *${name}*\n   ${it.qty} x Rp ${it.sellingPrice.toLocaleString(
           "id-ID"
-        )} = Rp ${it.subtotal.toLocaleString("id-ID")}`
+        )} = Rp ${it.subtotal.toLocaleString("id-ID")}`;
+      }
     )
     .join("\n");
 
@@ -74,3 +76,4 @@ export function openWhatsAppReceipt(tx: ReceiptData, phoneNumber?: string) {
 
   window.open(url, "_blank");
 }
+

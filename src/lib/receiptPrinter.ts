@@ -15,9 +15,13 @@ export interface ReceiptData {
     name: string;
   };
   items: {
-    product: {
+    product?: {
       name: string;
-    };
+    } | null;
+    bundle?: {
+      name: string;
+    } | null;
+    itemTitle?: string | null;
     qty: number;
     sellingPrice: number;
     subtotal: number;
@@ -41,10 +45,20 @@ export interface ShiftReportData {
   notes?: string;
 }
 
+export function escapeHtml(str: unknown): string {
+  if (str == null) return "";
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
 export function printThermalReceipt(tx: ReceiptData, storeInfo?: { name?: string; address?: string; phone?: string }) {
-  const storeName = storeInfo?.name || "FOCUS MARAJA";
-  const storeAddress = storeInfo?.address || "Fotokopi – ATK – Studio";
-  const storePhone = storeInfo?.phone || "Layanan Cepat & Akurat";
+  const storeName = escapeHtml(storeInfo?.name || "FOCUS MARAJA");
+  const storeAddress = escapeHtml(storeInfo?.address || "Fotokopi – ATK – Studio");
+  const storePhone = escapeHtml(storeInfo?.phone || "Layanan Cepat & Akurat");
 
   // Generate Barcode SVG untuk No. Invoice struk
   let barcodeSvg = "";
@@ -66,15 +80,18 @@ export function printThermalReceipt(tx: ReceiptData, storeInfo?: { name?: string
 
   const itemsHtml = tx.items
     .map(
-      (it) => `
+      (it) => {
+        const itemName = escapeHtml(it.itemTitle || it.product?.name || it.bundle?.name || "Item ATK");
+        return `
       <div class="receipt-item">
-        <div class="item-name">${it.product.name}</div>
+        <div class="item-name">${itemName}</div>
         <div class="item-meta">
           <span>${it.qty} x Rp ${it.sellingPrice.toLocaleString("id-ID")}</span>
           <span class="item-subtotal">Rp ${it.subtotal.toLocaleString("id-ID")}</span>
         </div>
       </div>
-    `
+    `;
+      }
     )
     .join("");
 
@@ -85,12 +102,16 @@ export function printThermalReceipt(tx: ReceiptData, storeInfo?: { name?: string
   }
 
   // Desain Struk Ramping Standar Thermal 58mm (Anti-Melebar di A4)
+  const safeInvoice = escapeHtml(tx.invoiceNumber);
+  const safeCashier = escapeHtml(tx.cashier?.name || "Kasir");
+  const safePaymentMethod = escapeHtml(tx.paymentMethod);
+
   const receiptHtml = `
     <!DOCTYPE html>
     <html lang="id">
       <head>
         <meta charset="utf-8" />
-        <title>Struk - ${tx.invoiceNumber}</title>
+        <title>Struk - ${safeInvoice}</title>
         <style>
           @page {
             size: 58mm auto;
@@ -239,7 +260,7 @@ export function printThermalReceipt(tx: ReceiptData, storeInfo?: { name?: string
             <tr>
               <td style="width: 32%;">No. Invoice</td>
               <td style="width: 4%;">:</td>
-              <td class="font-bold">${tx.invoiceNumber}</td>
+              <td class="font-bold">${safeInvoice}</td>
             </tr>
             <tr>
               <td>Waktu</td>
@@ -249,12 +270,12 @@ export function printThermalReceipt(tx: ReceiptData, storeInfo?: { name?: string
             <tr>
               <td>Kasir</td>
               <td>:</td>
-              <td>${tx.cashier?.name || "Kasir"}</td>
+              <td>${safeCashier}</td>
             </tr>
             <tr>
               <td>Metode</td>
               <td>:</td>
-              <td class="font-bold">${tx.paymentMethod}</td>
+              <td class="font-bold">${safePaymentMethod}</td>
             </tr>
           </table>
 
@@ -333,8 +354,9 @@ export function printThermalReceipt(tx: ReceiptData, storeInfo?: { name?: string
 }
 
 export function printShiftZReport(shift: ShiftReportData, storeInfo?: { name?: string; address?: string }) {
-  const storeName = storeInfo?.name || "FOCUS MARAJA";
-  const storeAddress = storeInfo?.address || "Fotokopi – ATK – Studio";
+  const storeName = escapeHtml(storeInfo?.name || "FOCUS MARAJA");
+  const storeAddress = escapeHtml(storeInfo?.address || "Fotokopi – ATK – Studio");
+  const safeCashier = escapeHtml(shift.cashierName);
 
   const printWindow = window.open("", "_blank", "width=380,height=600");
   if (!printWindow) {
@@ -361,7 +383,7 @@ export function printShiftZReport(shift: ShiftReportData, storeInfo?: { name?: s
     <html lang="id">
       <head>
         <meta charset="utf-8" />
-        <title>Rekap Shift - ${shift.cashierName}</title>
+        <title>Rekap Shift - ${safeCashier}</title>
         <style>
           @page { size: 58mm auto; margin: 0; }
           * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
@@ -405,7 +427,7 @@ export function printShiftZReport(shift: ShiftReportData, storeInfo?: { name?: s
           <div class="double-line"></div>
 
           <table>
-            <tr><td style="width: 40%;">Kasir</td><td>:</td><td class="font-bold">${shift.cashierName}</td></tr>
+            <tr><td style="width: 40%;">Kasir</td><td>:</td><td class="font-bold">${safeCashier}</td></tr>
             <tr><td>Shift</td><td>:</td><td>${shiftLabel}</td></tr>
             <tr><td>Buka Kasir</td><td>:</td><td>${new Date(shift.openedAt).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })} • ${new Date(shift.openedAt).toLocaleDateString("id-ID")}</td></tr>
             <tr><td>Tutup Kasir</td><td>:</td><td>${new Date(shift.closedAt).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })} • ${new Date(shift.closedAt).toLocaleDateString("id-ID")}</td></tr>
