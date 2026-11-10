@@ -7,10 +7,10 @@ services:
     container_name: devos_pos_db
     restart: always
     environment:
-      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-RootDevos2026!}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
       MYSQL_DATABASE: devos_pos
       MYSQL_USER: pos_user
-      MYSQL_PASSWORD: ${DB_PASSWORD:-SuperDevos2026!}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
     volumes:
       - mysql_data:/var/lib/mysql
     command: >
@@ -18,7 +18,7 @@ services:
       --character-set-server=utf8mb4
       --collation-server=utf8mb4_unicode_ci
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "pos_user", "-p${DB_PASSWORD:-SuperDevos2026!}"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "pos_user", "-p${DB_PASSWORD}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -41,8 +41,8 @@ services:
       NODE_ENV: production
       PORT: 3000
       HOSTNAME: "0.0.0.0"
-      DATABASE_URL: mysql://pos_user:${DB_PASSWORD:-SuperDevos2026!}@db:3306/devos_pos
-      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:-devos-super-secret-atk-jwt-token-production-2026}
+      DATABASE_URL: mysql://pos_user:${DB_PASSWORD}@db:3306/devos_pos
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
     ports:
       - "127.0.0.1:8087:3000"
     networks:
