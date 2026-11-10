@@ -26,11 +26,24 @@ import {
   Info
 } from "lucide-react";
 
+interface AuthUserItem {
+  id: string;
+  name: string;
+  username: string;
+  role: "ADMIN" | "KARYAWAN";
+}
+
+const DEFAULT_USERS: AuthUserItem[] = [
+  { id: "1", name: "Budi Kasir", username: "kasir", role: "KARYAWAN" },
+  { id: "2", name: "Owner Toko", username: "admin", role: "ADMIN" },
+];
+
 export default function LoginPage() {
   const router = useRouter();
 
-  // Operator selection (Kasir vs Owner)
-  const [selectedRole, setSelectedRole] = useState<"kasir" | "admin">("kasir");
+  // Dynamic user list & currently selected operator
+  const [users, setUsers] = useState<AuthUserItem[]>(DEFAULT_USERS);
+  const [selectedUser, setSelectedUser] = useState<AuthUserItem>(DEFAULT_USERS[0]);
   const [pin, setPin] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -47,6 +60,25 @@ export default function LoginPage() {
 
   // Digital Live Clock
   const [currentDateTime, setCurrentDateTime] = useState<Date | null>(null);
+
+  // Fetch active users dynamically from database
+  useEffect(() => {
+    async function fetchUsers() {
+      try {
+        const res = await fetch("/api/auth/users");
+        const data = await res.json();
+        if (data.success && Array.isArray(data.users) && data.users.length > 0) {
+          setUsers(data.users);
+          // Prioritaskan akun kasir (KARYAWAN) pertama sebagai default pilihan
+          const defaultKasir = data.users.find((u: AuthUserItem) => u.role === "KARYAWAN") || data.users[0];
+          setSelectedUser(defaultKasir);
+        }
+      } catch (err) {
+        console.error("Gagal memuat daftar kasir:", err);
+      }
+    }
+    fetchUsers();
+  }, []);
 
   useEffect(() => {
     setCurrentDateTime(new Date());
@@ -77,7 +109,7 @@ export default function LoginPage() {
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [pin, selectedRole, selectedShift, initialCashFloat, inputMode]);
+  }, [pin, selectedUser, selectedShift, initialCashFloat, inputMode]);
 
   const handlePinPress = (digit: string) => {
     if (pin.length < 8) {
@@ -87,7 +119,7 @@ export default function LoginPage() {
       // Auto submit jika mencapai 4 digit PIN
       if (nextPin.length === 4) {
         setTimeout(() => {
-          executeLogin(selectedRole, nextPin);
+          executeLogin(selectedUser.username, nextPin);
         }, 120);
       }
     }
@@ -98,13 +130,18 @@ export default function LoginPage() {
   };
 
   const handleLoginSubmit = () => {
-    const passToUse = inputMode === "pin" ? (pin || "1234") : customPassword;
-    executeLogin(selectedRole, passToUse);
+    const passToUse = inputMode === "pin" ? pin : customPassword;
+    executeLogin(selectedUser.username, passToUse);
   };
 
-  const executeLogin = async (role: "kasir" | "admin", pass: string) => {
-    const username = role === "kasir" ? "kasir" : "admin";
-    const finalPassword = pass || (role === "kasir" ? "kasir123" : "admin123");
+  const executeLogin = async (targetUsername: string, pass: string) => {
+    const finalUsername = (targetUsername || selectedUser?.username || "kasir").trim();
+    const finalPassword = pass;
+
+    if (!finalPassword) {
+      setErrorMsg("Silakan masukkan PIN atau sandi akun.");
+      return;
+    }
 
     setLoading(true);
     setErrorMsg(null);
@@ -113,7 +150,7 @@ export default function LoginPage() {
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password: finalPassword }),
+        body: JSON.stringify({ username: finalUsername, password: finalPassword }),
       });
 
       const data = await res.json();
@@ -131,13 +168,28 @@ export default function LoginPage() {
           shift: selectedShift,
           initialCashFloat: initialCashFloat,
           openedAt: new Date().toISOString(),
-          cashierName: data.user?.name || username,
+          cashierName: data.user?.name || selectedUser?.name || finalUsername,
         };
         localStorage.setItem("pos_active_shift", JSON.stringify(shiftData));
       }
 
+      // Daftarkan/Buka shift aktif resmi ke database
+      try {
+        await fetch("/api/pos/shift", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "OPEN",
+            shiftType: selectedShift,
+            openingFloat: initialCashFloat,
+          }),
+        });
+      } catch (shiftErr) {
+        console.debug("Auto register shift skipped:", shiftErr);
+      }
+
       // Berhasil login, arahkan ke rute tujuan
-      router.push(data.redirect || "/pos");
+      router.push(data.redirect || (selectedUser?.role === "ADMIN" ? "/admin" : "/pos"));
       router.refresh();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Gagal terhubung ke server.";
@@ -223,64 +275,82 @@ export default function LoginPage() {
                 />
               </div>
               <h2 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
-                {selectedRole === "kasir" ? "Meja Kasir Penjualan (POS)" : "Portal Owner / Supervisor"}
+                {selectedUser.role === "KARYAWAN" ? "Meja Kasir Penjualan (POS)" : "Portal Owner / Supervisor"}
               </h2>
               <span className="text-[11px] font-bold text-slate-500 uppercase tracking-widest mt-0.5">
                 Fotokopi • ATK • Studio
               </span>
             </div>
 
-            {/* Tombol Profil Kasir vs Owner */}
-            <div className="grid grid-cols-2 gap-2.5 mb-4">
-              {/* Operator Kasir */}
-              <button
-                type="button"
-                onClick={() => {
-                  setSelectedRole("kasir");
-                  setPin("");
-                  setErrorMsg(null);
-                }}
-                className={`p-3 rounded-2xl border-2 transition flex items-center gap-2.5 text-left ${
-                  selectedRole === "kasir"
-                    ? "bg-emerald-50 border-emerald-600 ring-2 ring-emerald-500/20 text-slate-900 shadow-xs"
-                    : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100"
-                }`}
-              >
-                <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
-                  selectedRole === "kasir" ? "bg-emerald-600 text-white font-black shadow-xs" : "bg-slate-200 text-slate-600"
-                }`}>
-                  <ShoppingCart className="w-4 h-4" />
-                </div>
-                <div className="min-w-0">
-                  <div className="font-black text-xs text-slate-900 truncate">Budi Kasir</div>
-                  <div className="text-[10px] text-emerald-700 font-bold">Staf Penjualan</div>
-                </div>
-              </button>
+            {/* Label Pilih Akun Kasir / Pengguna */}
+            <div className="mb-2 flex items-center justify-between">
+              <span className="text-xs font-black text-slate-700 uppercase tracking-wider">
+                Pilih Akun Kasir / Operator:
+              </span>
+              <span className="text-[11px] text-slate-500 font-bold bg-slate-100 px-2 py-0.5 rounded-full">
+                {users.length} Akun
+              </span>
+            </div>
 
-              {/* Operator Owner */}
-              <button
-                type="button"
-                onClick={() => {
-                  setSelectedRole("admin");
-                  setPin("");
-                  setErrorMsg(null);
-                }}
-                className={`p-3 rounded-2xl border-2 transition flex items-center gap-2.5 text-left ${
-                  selectedRole === "admin"
-                    ? "bg-indigo-50 border-indigo-600 ring-2 ring-indigo-500/20 text-slate-900 shadow-xs"
-                    : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100"
-                }`}
-              >
-                <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
-                  selectedRole === "admin" ? "bg-indigo-600 text-white font-black shadow-xs" : "bg-slate-200 text-slate-600"
-                }`}>
-                  <ShieldCheck className="w-4 h-4" />
-                </div>
-                <div className="min-w-0">
-                  <div className="font-black text-xs text-slate-900 truncate">Owner Toko</div>
-                  <div className="text-[10px] text-indigo-700 font-bold">Admin/SPV</div>
-                </div>
-              </button>
+            {/* DAFTAR AKUN PENGGUNA DINAMIS (KARYAWAN & OWNER) */}
+            <div
+              className={`grid ${
+                users.length <= 2 ? "grid-cols-2" : "grid-cols-2 sm:grid-cols-2 max-h-[175px] overflow-y-auto"
+              } gap-2.5 mb-4 pr-0.5`}
+            >
+              {users.map((u) => {
+                const isSelected = selectedUser.username === u.username;
+                const isKaryawan = u.role === "KARYAWAN";
+
+                return (
+                  <button
+                    key={u.id || u.username}
+                    type="button"
+                    onClick={() => {
+                      setSelectedUser(u);
+                      setPin("");
+                      setCustomPassword("");
+                      setErrorMsg(null);
+                    }}
+                    className={`p-3 rounded-2xl border-2 transition flex items-center gap-2.5 text-left select-none relative ${
+                      isSelected
+                        ? isKaryawan
+                          ? "bg-emerald-50 border-emerald-600 ring-2 ring-emerald-500/25 text-slate-900 shadow-xs"
+                          : "bg-indigo-50 border-indigo-600 ring-2 ring-indigo-500/25 text-slate-900 shadow-xs"
+                        : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100 hover:border-slate-300"
+                    }`}
+                  >
+                    <div
+                      className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
+                        isSelected
+                          ? isKaryawan
+                            ? "bg-emerald-600 text-white font-black shadow-xs"
+                            : "bg-indigo-600 text-white font-black shadow-xs"
+                          : "bg-slate-200 text-slate-600"
+                      }`}
+                    >
+                      {isKaryawan ? <ShoppingCart className="w-4 h-4" /> : <ShieldCheck className="w-4 h-4" />}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="font-black text-xs text-slate-900 truncate">{u.name}</div>
+                      <div
+                        className={`text-[10px] font-bold truncate ${
+                          isSelected
+                            ? isKaryawan
+                              ? "text-emerald-700"
+                              : "text-indigo-700"
+                            : "text-slate-500"
+                        }`}
+                      >
+                        {isKaryawan ? "Kasir POS" : "Admin / Owner"}
+                      </div>
+                    </div>
+                    {isSelected && (
+                      <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                    )}
+                  </button>
+                );
+              })}
             </div>
 
             {/* PETUNJUK PIN JELAS & BISA KLIK AUTOFILL */}
@@ -288,7 +358,7 @@ export default function LoginPage() {
               <div className="flex items-center gap-1.5 font-bold">
                 <Info className="w-4 h-4 text-amber-600 shrink-0" />
                 <span>
-                  PIN Cepat: <strong className="text-amber-950 font-black font-mono text-sm">1234</strong>
+                  PIN: <strong className="text-amber-950 font-black font-mono text-sm">1234</strong>
                 </span>
               </div>
               <button
@@ -296,7 +366,7 @@ export default function LoginPage() {
                 onClick={() => {
                   setPin("1234");
                   setTimeout(() => {
-                    executeLogin(selectedRole, "1234");
+                    executeLogin(selectedUser.username, "1234");
                   }, 100);
                 }}
                 className="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white font-black text-[11px] rounded-lg transition active:scale-95 shadow-2xs shrink-0"
@@ -370,7 +440,7 @@ export default function LoginPage() {
                 type="button"
                 onClick={handleLoginSubmit}
                 disabled={loading}
-                className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] disabled:opacity-50 text-white font-black text-sm rounded-2xl shadow-md shadow-emerald-600/25 flex items-center justify-center gap-2 transition"
+                className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] disabled:opacity-50 text-white font-black text-xs sm:text-sm rounded-2xl shadow-md shadow-emerald-600/25 flex items-center justify-center gap-2 transition"
               >
                 {loading ? (
                   <>
@@ -379,8 +449,10 @@ export default function LoginPage() {
                   </>
                 ) : (
                   <>
-                    <span>BUKA KASIR (MASUK)</span>
-                    <ArrowRight className="w-4 h-4" />
+                    <span className="truncate">
+                      BUKA KASIR ({selectedUser.name.toUpperCase()})
+                    </span>
+                    <ArrowRight className="w-4 h-4 shrink-0" />
                   </>
                 )}
               </button>
@@ -392,7 +464,7 @@ export default function LoginPage() {
             <div className="space-y-4">
               <div>
                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                  Kata Sandi / PIN Akun
+                  {selectedUser.role === "KARYAWAN" ? "PIN Kasir (4–6 Digit)" : "Kata Sandi / PIN Admin"}
                 </label>
                 <div className="relative">
                   <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5 pointer-events-none" />
@@ -400,7 +472,7 @@ export default function LoginPage() {
                     type={showPassword ? "text" : "password"}
                     value={customPassword}
                     onChange={(e) => setCustomPassword(e.target.value)}
-                    placeholder="Masukkan sandi atau PIN (contoh: 1234)"
+                    placeholder={selectedUser.role === "KARYAWAN" ? "Masukkan 4-6 digit PIN angka..." : "Masukkan sandi atau PIN..."}
                     className="w-full pl-10 pr-10 py-3 bg-white border border-slate-300 focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100 rounded-xl text-slate-900 font-bold text-sm focus:outline-none transition"
                     autoFocus
                   />
@@ -420,7 +492,7 @@ export default function LoginPage() {
                 disabled={loading}
                 className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] text-white font-black text-sm rounded-xl shadow-md shadow-emerald-600/25 flex items-center justify-center gap-2 transition"
               >
-                {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <span>Masuk Register</span>}
+                {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <span>Masuk Register ({selectedUser.name})</span>}
               </button>
             </div>
           )}
@@ -440,8 +512,9 @@ export default function LoginPage() {
               <button
                 type="button"
                 onClick={() => {
-                  setSelectedRole("kasir");
-                  executeLogin("kasir", "1234");
+                  const kasir = users.find((u) => u.role === "KARYAWAN") || users[0];
+                  setSelectedUser(kasir);
+                  executeLogin(kasir.username, "1234");
                 }}
                 className="text-[11px] font-bold text-emerald-800 hover:underline bg-emerald-50 px-2 py-0.5 rounded-lg border border-emerald-200"
               >
@@ -450,8 +523,9 @@ export default function LoginPage() {
               <button
                 type="button"
                 onClick={() => {
-                  setSelectedRole("admin");
-                  executeLogin("admin", "1234");
+                  const admin = users.find((u) => u.role === "ADMIN") || users[users.length - 1];
+                  setSelectedUser(admin);
+                  executeLogin(admin.username, "1234");
                 }}
                 className="text-[11px] font-bold text-indigo-800 hover:underline bg-indigo-50 px-2 py-0.5 rounded-lg border border-indigo-200"
               >

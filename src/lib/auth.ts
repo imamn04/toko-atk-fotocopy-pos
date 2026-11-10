@@ -2,7 +2,7 @@ import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
 
 const SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || "super-secure-secret-key-toko-atk-pos-2026-xyz"
+  process.env.JWT_SECRET || process.env.NEXTAUTH_SECRET || "super-secure-secret-key-toko-atk-pos-2026-xyz"
 );
 
 export interface TokenPayload {

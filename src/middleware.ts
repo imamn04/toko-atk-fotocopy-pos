@@ -3,7 +3,7 @@ import type { NextRequest } from "next/server";
 import { jwtVerify } from "jose";
 
 const SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || "super-secure-secret-key-toko-atk-pos-2026-xyz"
+  process.env.JWT_SECRET || process.env.NEXTAUTH_SECRET || "super-secure-secret-key-toko-atk-pos-2026-xyz"
 );
 
 export async function middleware(request: NextRequest) {
@@ -32,6 +32,31 @@ export async function middleware(request: NextRequest) {
       const target = sessionUser.role === "ADMIN" ? "/admin" : "/pos";
       return NextResponse.redirect(new URL(target, request.url));
     }
+    return NextResponse.next();
+  }
+
+  // Proteksi ketat API Admin (/api/admin/*)
+  if (pathname.startsWith("/api/admin")) {
+    if (!sessionUser) {
+      return NextResponse.json(
+        { success: false, message: "Autentikasi diperlukan. Silakan login." },
+        { status: 401 }
+      );
+    }
+
+    // Kasir POS diizinkan membaca konfigurasi toko & QRIS via GET
+    if (pathname === "/api/admin/settings" && request.method === "GET") {
+      return NextResponse.next();
+    }
+
+    // Semua rute admin lainnya dan mutasi setting wajib memiliki hak akses ADMIN
+    if (sessionUser.role !== "ADMIN") {
+      return NextResponse.json(
+        { success: false, message: "Akses ditolak. Hak akses Administrator diperlukan." },
+        { status: 403 }
+      );
+    }
+
     return NextResponse.next();
   }
 
@@ -68,6 +93,6 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/pos/:path*", "/admin/:path*", "/login"],
+  matcher: ["/pos/:path*", "/admin/:path*", "/api/admin/:path*", "/login"],
 };
 
