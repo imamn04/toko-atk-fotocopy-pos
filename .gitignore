@@ -30,11 +30,16 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
+# env files - strictly block all secrets
 .env
-.env*.local
+.env*
 !.env.example
-!.env.production
+
+# sqlite database
+*.db
+*.db-journal
+prisma/*.db
+prisma/*.db-journal
 
 # vercel
 .vercel
