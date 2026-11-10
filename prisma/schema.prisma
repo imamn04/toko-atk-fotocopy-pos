@@ -52,9 +52,14 @@ model Product {
   stock            Int               @default(0) // Sisa stok saat ini
   minStock         Int               @default(5) // Batas alert stok menipis
   isActive         Boolean           @default(true)
+  hasPack          Boolean           @default(false) // Dukungan Multi-Satuan Grosir
+  packName         String?           // e.g. "Pack", "Lusin", "Rim", "Box"
+  packQuantity     Int?              // Isi berapa pcs per pack (e.g. 10)
+  packPrice        Float?            // Harga jual khusus per pack (e.g. Rp 37.000)
   createdAt        DateTime          @default(now())
   updatedAt        DateTime          @updatedAt
   transactionItems TransactionItem[]
+  bundleItems      BundleItem[]
 
   @@index([barcode])
   @@index([name])
@@ -73,23 +78,32 @@ model Transaction {
   paymentMethod  String            @default("CASH") // CASH, QRIS, TRANSFER
   customerName   String?
   customerPhone  String?
+  status         String            @default("COMPLETED") // COMPLETED, VOIDED
+  voidReason     String?
+  voidedAt       DateTime?
+  voidedBy       String?
   createdAt      DateTime          @default(now())
   items          TransactionItem[]
 
   @@index([invoiceNumber])
   @@index([createdAt])
+  @@index([status])
 }
 
 model TransactionItem {
-  id            String      @id @default(cuid())
+  id            String       @id @default(cuid())
   transactionId String
-  transaction   Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
-  productId     String
-  product       Product     @relation(fields: [productId], references: [id])
+  transaction   Transaction  @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  productId     String?
+  product       Product?     @relation(fields: [productId], references: [id])
+  bundleId      String?
+  bundle        Bundle?      @relation(fields: [bundleId], references: [id])
+  itemTitle     String?
+  unitType      String?      @default("PCS") // "PCS" or "PACK"
   qty           Int
-  costPrice     Float       // HPP saat transaksi terjadi
-  sellingPrice  Float       // Harga jual saat transaksi terjadi
-  subtotal      Float       // qty * sellingPrice
+  costPrice     Float        // HPP saat transaksi terjadi
+  sellingPrice  Float        // Harga jual saat transaksi terjadi
+  subtotal      Float        // qty * sellingPrice
 }
 
 model Shift {
@@ -110,5 +124,55 @@ model Shift {
 
   @@index([status])
   @@index([openedAt])
+}
+
+model StoreSetting {
+  id              String   @id @default("default")
+  storeName       String   @default("FOCUS MARAJA")
+  storeAddress    String?  @default("Fotokopi – ATK – Studio")
+  storePhone      String?  @default("0812-3456-7890")
+  qrisImageUrl    String?  // Gambar QRIS toko (data URL base64 atau path)
+  qrisRawPayload  String?  // String QRIS EMVCo jika ada
+  bankAccountInfo String?  // Info Rekening Toko (e.g. BCA 1234567890 a.n FOCUS MARAJA)
+  updatedAt       DateTime @updatedAt
+}
+
+model Expense {
+  id          String   @id @default(cuid())
+  category    String   // "KULAKAN_STOK", "LISTRIK_AIR", "OPERASIONAL", "SERVIS_MESIN", "GAJI", "LAINNYA"
+  description String
+  amount      Float
+  date        DateTime @default(now())
+  recordedBy  String?
+  createdAt   DateTime @default(now())
+
+  @@index([date])
+  @@index([category])
+}
+
+model Bundle {
+  id               String            @id @default(cuid())
+  name             String
+  sku              String            @unique
+  barcode          String            @unique
+  price            Float
+  description      String?
+  isActive         Boolean           @default(true)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  items            BundleItem[]
+  transactionItems TransactionItem[]
+
+  @@index([barcode])
+  @@index([name])
+}
+
+model BundleItem {
+  id        String  @id @default(cuid())
+  bundleId  String
+  bundle    Bundle  @relation(fields: [bundleId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product @relation(fields: [productId], references: [id])
+  qty       Int     @default(1)
 }
 

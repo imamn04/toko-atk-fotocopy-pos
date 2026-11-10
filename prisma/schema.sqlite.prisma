@@ -1,3 +1,6 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
 generator client {
   provider = "prisma-client-js"
 }
@@ -7,12 +10,23 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum Role {
+  ADMIN
+  KARYAWAN
+}
+
+enum PaymentMethod {
+  CASH
+  QRIS
+  TRANSFER
+}
+
 model User {
   id           String        @id @default(cuid())
   name         String
   username     String        @unique
   password     String
-  role         String        @default("KARYAWAN")
+  role         String        @default("KARYAWAN") // "ADMIN" or "KARYAWAN"
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
   transactions Transaction[]
@@ -33,45 +47,132 @@ model Product {
   name             String
   categoryId       String
   category         Category          @relation(fields: [categoryId], references: [id])
-  costPrice        Float
-  sellingPrice     Float
-  stock            Int               @default(0)
-  minStock         Int               @default(5)
+  costPrice        Float             // Harga Beli / HPP Modal
+  sellingPrice     Float             // Harga Jual
+  stock            Int               @default(0) // Sisa stok saat ini
+  minStock         Int               @default(5) // Batas alert stok menipis
   isActive         Boolean           @default(true)
+  hasPack          Boolean           @default(false) // Dukungan Multi-Satuan Grosir
+  packName         String?           // e.g. "Pack", "Lusin", "Rim", "Box"
+  packQuantity     Int?              // Isi berapa pcs per pack (e.g. 10)
+  packPrice        Float?            // Harga jual khusus per pack (e.g. Rp 37.000)
   createdAt        DateTime          @default(now())
   updatedAt        DateTime          @updatedAt
   transactionItems TransactionItem[]
+  bundleItems      BundleItem[]
 
   @@index([barcode])
   @@index([name])
 }
 
 model Transaction {
-  id            String            @id @default(cuid())
-  invoiceNumber String            @unique
-  cashierId     String
-  cashier       User              @relation(fields: [cashierId], references: [id])
-  totalAmount   Float
-  totalCost     Float
-  cashPaid      Float
-  changeDue     Float
-  paymentMethod String            @default("CASH")
-  createdAt     DateTime          @default(now())
-  items         TransactionItem[]
+  id             String            @id @default(cuid())
+  invoiceNumber  String            @unique // e.g. TRX-20261106-0001
+  cashierId      String
+  cashier        User              @relation(fields: [cashierId], references: [id])
+  totalAmount    Float             // Total Belanja (setelah diskon)
+  totalCost      Float             // Total HPP (untuk laba kotor)
+  discountAmount Float             @default(0) // Nilai diskon potongan harga
+  cashPaid       Float             // Jumlah Uang Diterima
+  changeDue      Float             // Kembalian
+  paymentMethod  String            @default("CASH") // CASH, QRIS, TRANSFER
+  customerName   String?
+  customerPhone  String?
+  status         String            @default("COMPLETED") // COMPLETED, VOIDED
+  voidReason     String?
+  voidedAt       DateTime?
+  voidedBy       String?
+  createdAt      DateTime          @default(now())
+  items          TransactionItem[]
 
   @@index([invoiceNumber])
   @@index([createdAt])
+  @@index([status])
 }
 
 model TransactionItem {
-  id            String      @id @default(cuid())
+  id            String       @id @default(cuid())
   transactionId String
-  transaction   Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
-  productId     String
-  product       Product     @relation(fields: [productId], references: [id])
+  transaction   Transaction  @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  productId     String?
+  product       Product?     @relation(fields: [productId], references: [id])
+  bundleId      String?
+  bundle        Bundle?      @relation(fields: [bundleId], references: [id])
+  itemTitle     String?
+  unitType      String?      @default("PCS") // "PCS" or "PACK"
   qty           Int
-  costPrice     Float
-  sellingPrice  Float
-  subtotal      Float
+  costPrice     Float        // HPP saat transaksi terjadi
+  sellingPrice  Float        // Harga jual saat transaksi terjadi
+  subtotal      Float        // qty * sellingPrice
+}
+
+model Shift {
+  id                String    @id @default(cuid())
+  cashierId         String
+  cashierName       String
+  shiftType         String    @default("SHIFT_1") // SHIFT_1, SHIFT_2, FULL
+  openingFloat      Float     @default(0)         // Modal awal laci kasir
+  closingCash       Float?                        // Uang fisik saat tutup kasir
+  expectedCash      Float?                        // Dihitung sistem: openingFloat + totalCashSales
+  totalCashSales    Float     @default(0)
+  totalQrisSales    Float     @default(0)
+  totalTransactions Int       @default(0)
+  notes             String?
+  status            String    @default("OPEN")    // OPEN, CLOSED
+  openedAt          DateTime  @default(now())
+  closedAt          DateTime?
+
+  @@index([status])
+  @@index([openedAt])
+}
+
+model StoreSetting {
+  id              String   @id @default("default")
+  storeName       String   @default("FOCUS MARAJA")
+  storeAddress    String?  @default("Fotokopi – ATK – Studio")
+  storePhone      String?  @default("0812-3456-7890")
+  qrisImageUrl    String?  // Gambar QRIS toko (data URL base64 atau path)
+  qrisRawPayload  String?  // String QRIS EMVCo jika ada
+  bankAccountInfo String?  // Info Rekening Toko (e.g. BCA 1234567890 a.n FOCUS MARAJA)
+  updatedAt       DateTime @updatedAt
+}
+
+model Expense {
+  id          String   @id @default(cuid())
+  category    String   // "KULAKAN_STOK", "LISTRIK_AIR", "OPERASIONAL", "SERVIS_MESIN", "GAJI", "LAINNYA"
+  description String
+  amount      Float
+  date        DateTime @default(now())
+  recordedBy  String?
+  createdAt   DateTime @default(now())
+
+  @@index([date])
+  @@index([category])
+}
+
+model Bundle {
+  id               String            @id @default(cuid())
+  name             String
+  sku              String            @unique
+  barcode          String            @unique
+  price            Float
+  description      String?
+  isActive         Boolean           @default(true)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  items            BundleItem[]
+  transactionItems TransactionItem[]
+
+  @@index([barcode])
+  @@index([name])
+}
+
+model BundleItem {
+  id        String  @id @default(cuid())
+  bundleId  String
+  bundle    Bundle  @relation(fields: [bundleId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product @relation(fields: [productId], references: [id])
+  qty       Int     @default(1)
 }
 
