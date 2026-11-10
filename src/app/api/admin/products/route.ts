@@ -1,8 +1,14 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { getSessionUser } from "@/lib/auth";
 
 export async function GET() {
   try {
+    const user = await getSessionUser();
+    if (!user || user.role !== "ADMIN") {
+      return NextResponse.json({ success: false, message: "Akses ditolak" }, { status: 403 });
+    }
+
     const products = await prisma.product.findMany({
       include: {
         category: true,
@@ -32,8 +38,26 @@ export async function GET() {
 
 export async function POST(req: Request) {
   try {
+    const user = await getSessionUser();
+    if (!user || user.role !== "ADMIN") {
+      return NextResponse.json({ success: false, message: "Akses ditolak" }, { status: 403 });
+    }
+
     const body = await req.json();
-    const { name, categoryId, costPrice, sellingPrice, stock, minStock, barcode, sku } = body;
+    const {
+      name,
+      categoryId,
+      costPrice,
+      sellingPrice,
+      stock,
+      minStock,
+      barcode,
+      sku,
+      hasPack = false,
+      packName,
+      packQuantity,
+      packPrice,
+    } = body;
 
     if (!name || !categoryId || costPrice === undefined || sellingPrice === undefined) {
       return NextResponse.json(
@@ -77,6 +101,10 @@ export async function POST(req: Request) {
         stock: Number(stock) || 0,
         minStock: Number(minStock) || 5,
         isActive: true,
+        hasPack: Boolean(hasPack),
+        packName: hasPack && packName ? packName.trim() : null,
+        packQuantity: hasPack && packQuantity ? Number(packQuantity) : null,
+        packPrice: hasPack && packPrice ? Number(packPrice) : null,
       },
       include: {
         category: true,

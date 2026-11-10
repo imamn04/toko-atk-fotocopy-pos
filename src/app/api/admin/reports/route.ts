@@ -1,8 +1,16 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { getSessionUser } from "@/lib/auth";
 
 export async function GET(req: Request) {
   try {
+    const user = await getSessionUser();
+    if (!user || user.role !== "ADMIN") {
+      return NextResponse.json(
+        { success: false, message: "Akses ditolak. Hanya Admin / Pemilik Toko yang berwenang mengakses laporan keuangan." },
+        { status: 403 }
+      );
+    }
     const { searchParams } = new URL(req.url);
     const startDateParam = searchParams.get("startDate");
     const endDateParam = searchParams.get("endDate");
@@ -38,22 +46,31 @@ export async function GET(req: Request) {
                 category: { select: { name: true } },
               },
             },
+            bundle: {
+              select: {
+                name: true,
+                sku: true,
+                barcode: true,
+              },
+            },
           },
         },
       },
       orderBy: { createdAt: "desc" },
     });
 
-    // 2. Transaksi Hari Ini (Daily Report)
+    // 2. Transaksi Hari Ini (Daily Report - Hanya yang aktif / tidak void)
     const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const todayTransactions = await prisma.transaction.findMany({
       where: {
         createdAt: { gte: startOfToday },
+        status: { not: "VOIDED" },
       },
       include: {
         items: {
           include: {
             product: { select: { name: true } },
+            bundle: { select: { name: true } },
           },
         },
       },
@@ -68,47 +85,58 @@ export async function GET(req: Request) {
     const dailyItemMap = new Map<string, { name: string; qty: number; subtotal: number }>();
     for (const tx of todayTransactions) {
       for (const item of tx.items) {
-        const existing = dailyItemMap.get(item.productId) || {
-          name: item.product.name,
+        const itemKey = item.productId || item.bundleId || item.id;
+        const itemName = item.product?.name || item.bundle?.name || item.itemTitle || "Item";
+        const existing = dailyItemMap.get(itemKey) || {
+          name: itemName,
           qty: 0,
           subtotal: 0,
         };
         existing.qty += item.qty;
         existing.subtotal += item.subtotal;
-        dailyItemMap.set(item.productId, existing);
+        dailyItemMap.set(itemKey, existing);
       }
     }
     const dailySoldItems = Array.from(dailyItemMap.values()).sort((a, b) => b.qty - a.qty);
 
-    // 3. Rekap Transaksi Filtered (Range Total)
-    const rangeRevenue = transactions.reduce((acc, t) => acc + t.totalAmount, 0);
-    const rangeCost = transactions.reduce((acc, t) => acc + t.totalCost, 0);
+    // 3. Rekap Transaksi Filtered (Hanya transaksi valid yang dihitung ke omzet dan laba)
+    const validTransactions = transactions.filter((t) => t.status !== "VOIDED");
+
+    const rangeRevenue = validTransactions.reduce((acc, t) => acc + t.totalAmount, 0);
+    const rangeCost = validTransactions.reduce((acc, t) => acc + t.totalCost, 0);
     const rangeGrossProfit = rangeRevenue - rangeCost;
-    const aov = transactions.length > 0 ? Math.round(rangeRevenue / transactions.length) : 0;
+    const aov = validTransactions.length > 0 ? Math.round(rangeRevenue / validTransactions.length) : 0;
     const marginPercent = rangeRevenue > 0 ? ((rangeGrossProfit / rangeRevenue) * 100).toFixed(1) : "0";
 
     // Rekap Best Seller dalam rentang tanggal
     const bestSellerMap = new Map<string, { name: string; qty: number; totalSales: number }>();
     const categoryMap = new Map<string, { name: string; revenue: number; qty: number }>();
-    const paymentMap = new Map<string, number>();
+    const paymentMap = new Map<string, { total: number; count: number }>();
 
-    for (const tx of transactions) {
+    for (const tx of validTransactions) {
       // Metode pembayaran
-      paymentMap.set(tx.paymentMethod, (paymentMap.get(tx.paymentMethod) || 0) + tx.totalAmount);
+      const method = (tx.paymentMethod || "CASH").toUpperCase();
+      const existingPay = paymentMap.get(method) || { total: 0, count: 0 };
+      existingPay.total += tx.totalAmount;
+      existingPay.count += 1;
+      paymentMap.set(method, existingPay);
 
       for (const item of tx.items) {
+        const itemKey = item.productId || item.bundleId || item.id;
+        const itemName = item.product?.name || item.bundle?.name || item.itemTitle || "Item";
+
         // Best sellers
-        const existingBest = bestSellerMap.get(item.productId) || {
-          name: item.product.name,
+        const existingBest = bestSellerMap.get(itemKey) || {
+          name: itemName,
           qty: 0,
           totalSales: 0,
         };
         existingBest.qty += item.qty;
         existingBest.totalSales += item.subtotal;
-        bestSellerMap.set(item.productId, existingBest);
+        bestSellerMap.set(itemKey, existingBest);
 
         // Kategori breakdown
-        const catName = item.product.category?.name || "Lainnya";
+        const catName = item.product?.category?.name || (item.bundleId ? "Paket Promo" : "Lainnya");
         const existingCat = categoryMap.get(catName) || { name: catName, revenue: 0, qty: 0 };
         existingCat.revenue += item.subtotal;
         existingCat.qty += item.qty;
@@ -122,9 +150,10 @@ export async function GET(req: Request) {
 
     const categoryBreakdown = Array.from(categoryMap.values()).sort((a, b) => b.revenue - a.revenue);
 
-    const paymentMethods = Array.from(paymentMap.entries()).map(([method, total]) => ({
+    const paymentMethods = Array.from(paymentMap.entries()).map(([method, val]) => ({
       method,
-      total,
+      total: val.total,
+      count: val.count,
     }));
 
     // 4. Data Tren Tanggal Kontinu (Continuous Date Range untuk Grafik Recharts Cantik)
@@ -133,7 +162,6 @@ export async function GET(req: Request) {
     // Inisialisasi rentang tanggal kontinu
     const curDate = new Date(filterStart);
     const endLimit = new Date(filterEnd);
-    // Batasi generate hari maks 60 hari agar performa tetap cepat
     let dayCount = 0;
     while (curDate <= endLimit && dayCount < 60) {
       const dateKey = curDate.toISOString().slice(0, 10);
@@ -147,7 +175,7 @@ export async function GET(req: Request) {
       dayCount++;
     }
 
-    for (const tx of transactions) {
+    for (const tx of validTransactions) {
       const dateKey = tx.createdAt.toISOString().slice(0, 10);
       const existing = trendMap.get(dateKey) || {
         date: dateKey,
@@ -176,7 +204,9 @@ export async function GET(req: Request) {
         revenue: rangeRevenue,
         cost: rangeCost,
         profit: rangeGrossProfit,
-        transactionCount: transactions.length,
+        transactionCount: validTransactions.length,
+        totalRawTransactions: transactions.length,
+        voidTransactionCount: transactions.length - validTransactions.length,
         aov,
         marginPercent,
       },

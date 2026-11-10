@@ -27,12 +27,16 @@ import {
   ChevronLeft,
   ChevronRight,
   QrCode,
-  Coins
+  Coins,
+  ShieldCheck,
+  Banknote,
+  CreditCard
 } from "lucide-react";
 import {
   ComposedChart,
   Area,
   Bar,
+  BarChart,
   Line,
   XAxis,
   YAxis,
@@ -47,6 +51,10 @@ import {
 import { exportTransactionsToExcel, TransactionReportData } from "@/lib/exportExcel";
 import { exportTransactionsToPdf } from "@/lib/exportPdf";
 import { printShiftZReport, ShiftReportData } from "@/lib/receiptPrinter";
+import { Wallet, Settings, Sparkles } from "lucide-react";
+import ExpenseManagerTab from "@/components/admin/ExpenseManagerTab";
+import BundleManagerTab from "@/components/admin/BundleManagerTab";
+import StoreSettingsTab from "@/components/admin/StoreSettingsTab";
 
 interface Category {
   id: string;
@@ -67,6 +75,10 @@ interface Product {
     id: string;
     name: string;
   };
+  hasPack?: boolean;
+  packName?: string | null;
+  packQuantity?: number | null;
+  packPrice?: number | null;
 }
 
 interface UserAccount {
@@ -104,7 +116,7 @@ interface ReportData {
   };
   bestSellers: { name: string; qty: number; totalSales: number }[];
   categoryBreakdown: { name: string; revenue: number; qty: number }[];
-  paymentMethods: { method: string; total: number }[];
+  paymentMethods: { method: string; total: number; count?: number }[];
   chartTrend: { date: string; omzet: number; laba: number; transaksi: number }[];
   transactions: {
     id: string;
@@ -114,8 +126,17 @@ interface ReportData {
     totalAmount: number;
     totalCost: number;
     paymentMethod: string;
+    status?: string;
+    voidReason?: string | null;
     cashier: { name: string };
-    items: { product: { name: string }; qty: number; sellingPrice: number; subtotal: number }[];
+    items: {
+      product?: { name: string } | null;
+      bundle?: { name: string } | null;
+      itemTitle?: string | null;
+      qty: number;
+      sellingPrice: number;
+      subtotal: number;
+    }[];
   }[];
 }
 
@@ -132,8 +153,10 @@ export default function AdminPage() {
   const router = useRouter();
   const [currentUser, setCurrentUser] = useState<UserSession | null>(null);
 
-  // Tab Menu: 'inventory' | 'reports' | 'users' | 'shifts'
-  const [activeTab, setActiveTab] = useState<"inventory" | "reports" | "users" | "shifts">("inventory");
+  // Tab Menu: 'inventory' | 'reports' | 'expenses' | 'bundles' | 'settings' | 'users' | 'shifts'
+  const [activeTab, setActiveTab] = useState<
+    "inventory" | "reports" | "expenses" | "bundles" | "settings" | "users" | "shifts"
+  >("inventory");
   const [reportSubTab, setReportSubTab] = useState<"daily" | "monthly" | "yearly">("daily");
 
   // State Riwayat Shift Kasir
@@ -186,6 +209,12 @@ export default function AdminPage() {
     return d.toISOString().slice(0, 10);
   });
   const [endDate, setEndDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [paymentFilter, setPaymentFilter] = useState<"ALL" | "CASH" | "QRIS" | "TRANSFER">("ALL");
+
+  // State Void / Pembatalan Transaksi
+  const [voidingTx, setVoidingTx] = useState<{ id: string; invoiceNumber: string; totalAmount: number } | null>(null);
+  const [voidReasonInput, setVoidReasonInput] = useState("");
+  const [isVoidSubmitting, setIsVoidSubmitting] = useState(false);
 
   // Modal Tambah Barang Baru
   const [showAddModal, setShowAddModal] = useState(false);
@@ -198,6 +227,10 @@ export default function AdminPage() {
     minStock: 5,
     barcode: "",
     sku: "",
+    hasPack: false,
+    packName: "",
+    packQuantity: 10,
+    packPrice: 0,
   });
 
   // Modal Edit Barang
@@ -211,6 +244,10 @@ export default function AdminPage() {
     minStock: 5,
     barcode: "",
     sku: "",
+    hasPack: false,
+    packName: "",
+    packQuantity: 10,
+    packPrice: 0,
   });
 
   const [submitting, setSubmitting] = useState(false);
@@ -436,6 +473,10 @@ export default function AdminPage() {
       minStock: p.minStock,
       barcode: p.barcode,
       sku: p.sku,
+      hasPack: !!p.hasPack,
+      packName: p.packName || "",
+      packQuantity: p.packQuantity || 10,
+      packPrice: p.packPrice || 0,
     });
   };
 
@@ -617,14 +658,20 @@ export default function AdminPage() {
     }
   };
 
-  // Export Laporan ke Excel
+  // Export Laporan ke Excel (Hanya transaksi valid yang bukan VOID)
   const handleExportExcel = async () => {
     if (!reportData || reportData.transactions.length === 0) {
       alert("Tidak ada data transaksi untuk diexport.");
       return;
     }
 
-    const formattedList: TransactionReportData[] = reportData.transactions.map((tx) => ({
+    const validTxs = reportData.transactions.filter((tx) => tx.status !== "VOIDED");
+    if (validTxs.length === 0) {
+      alert("Tidak ada transaksi aktif (non-void) untuk diexport.");
+      return;
+    }
+
+    const formattedList: TransactionReportData[] = validTxs.map((tx) => ({
       invoiceNumber: tx.invoiceNumber,
       createdAt: tx.createdAt,
       cashierName: tx.cashier.name,
@@ -638,14 +685,20 @@ export default function AdminPage() {
     await exportTransactionsToExcel(formattedList, `${startDate} s/d ${endDate}`);
   };
 
-  // Export Laporan ke PDF Resmi A4
+  // Export Laporan ke PDF Resmi A4 (Hanya transaksi valid yang bukan VOID)
   const handleExportPdf = () => {
     if (!reportData || reportData.transactions.length === 0) {
       alert("Tidak ada data transaksi untuk dicetak.");
       return;
     }
 
-    const formattedList: TransactionReportData[] = reportData.transactions.map((tx) => ({
+    const validTxs = reportData.transactions.filter((tx) => tx.status !== "VOIDED");
+    if (validTxs.length === 0) {
+      alert("Tidak ada transaksi aktif (non-void) untuk dicetak.");
+      return;
+    }
+
+    const formattedList: TransactionReportData[] = validTxs.map((tx) => ({
       invoiceNumber: tx.invoiceNumber,
       createdAt: tx.createdAt,
       cashierName: tx.cashier.name,
@@ -657,6 +710,45 @@ export default function AdminPage() {
     }));
 
     exportTransactionsToPdf(formattedList, `${startDate} s/d ${endDate}`);
+  };
+
+  // Batalkan Transaksi (VOID) & Auto-Restock Barang
+  const handleVoidTransaction = async () => {
+    if (!voidingTx) return;
+    if (!voidReasonInput.trim()) {
+      alert("Mohon masukkan alasan pembatalan transaksi.");
+      return;
+    }
+
+    try {
+      setIsVoidSubmitting(true);
+      const res = await fetch(`/api/admin/transactions/${voidingTx.id}/void`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reason: voidReasonInput.trim() }),
+      });
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        alert(data.message || "Gagal membatalkan transaksi.");
+        return;
+      }
+
+      setAlertMsg({
+        text: `Transaksi ${voidingTx.invoiceNumber} berhasil dibatalkan (VOID). Seluruh stok item telah dikembalikan otomatis ke gudang!`,
+        type: "success",
+      });
+      setVoidingTx(null);
+      setVoidReasonInput("");
+      fetchReports();
+      fetchProducts();
+      setTimeout(() => setAlertMsg(null), 5000);
+    } catch (err) {
+      console.error("Void transaction error:", err);
+      alert("Terjadi kesalahan sistem saat membatalkan transaksi.");
+    } finally {
+      setIsVoidSubmitting(false);
+    }
   };
 
   // Filter & Sort Produk
@@ -746,6 +838,7 @@ export default function AdminPage() {
       {/* Main Tabs Navigation */}
       <div className="bg-white border-b border-slate-200 px-4 sm:px-6 py-2.5 shadow-xs sticky top-[57px] sm:top-[61px] z-30 overflow-x-auto scrollbar-none">
         <div className="max-w-7xl mx-auto flex items-center gap-2 sm:gap-3 min-w-max">
+          {/* 1. Manajemen Stok & Master Barang */}
           <button
             type="button"
             onClick={() => setActiveTab("inventory")}
@@ -759,6 +852,52 @@ export default function AdminPage() {
             <span>Manajemen Stok & Master Barang</span>
           </button>
 
+          {/* 2. Paket Bundling Promo */}
+          <button
+            type="button"
+            onClick={() => setActiveTab("bundles")}
+            className={`flex items-center gap-2 px-3.5 sm:px-4 py-2 text-xs font-black rounded-xl transition whitespace-nowrap ${
+              activeTab === "bundles"
+                ? "bg-blue-600 text-white shadow-md shadow-blue-500/25 ring-2 ring-blue-400/20"
+                : "text-slate-600 hover:bg-slate-100"
+            }`}
+          >
+            <Package className="w-4 h-4" />
+            <span>Paket Bundling Promo</span>
+          </button>
+
+          {/* 3. Pengeluaran & Belanja Toko */}
+          <button
+            type="button"
+            onClick={() => setActiveTab("expenses")}
+            className={`flex items-center gap-2 px-3.5 sm:px-4 py-2 text-xs font-black rounded-xl transition whitespace-nowrap ${
+              activeTab === "expenses"
+                ? "bg-rose-600 text-white shadow-md shadow-rose-500/25 ring-2 ring-rose-400/20"
+                : "text-slate-600 hover:bg-slate-100"
+            }`}
+          >
+            <Wallet className="w-4 h-4" />
+            <span>Pengeluaran & Belanja Toko</span>
+          </button>
+
+          {/* 4. Rekap Tutup Shift Kasir (Z-Report) */}
+          <button
+            type="button"
+            onClick={() => {
+              setActiveTab("shifts");
+              fetchShifts();
+            }}
+            className={`flex items-center gap-2 px-3.5 sm:px-4 py-2 text-xs font-black rounded-xl transition whitespace-nowrap ${
+              activeTab === "shifts"
+                ? "bg-amber-600 text-white shadow-md shadow-amber-500/25 ring-2 ring-amber-400/20"
+                : "text-slate-600 hover:bg-slate-100"
+            }`}
+          >
+            <Coins className="w-4 h-4" />
+            <span>Rekap Tutup Shift Kasir (Z-Report)</span>
+          </button>
+
+          {/* 5. Laporan Penjualan & Statistik Laba */}
           <button
             type="button"
             onClick={() => {
@@ -775,6 +914,7 @@ export default function AdminPage() {
             <span>Laporan Penjualan & Statistik Laba</span>
           </button>
 
+          {/* 6. Kelola Karyawan & Role (RBAC) */}
           <button
             type="button"
             onClick={() => {
@@ -791,20 +931,18 @@ export default function AdminPage() {
             <span>Kelola Karyawan & Role (RBAC)</span>
           </button>
 
+          {/* 7. Pengaturan Toko & QRIS */}
           <button
             type="button"
-            onClick={() => {
-              setActiveTab("shifts");
-              fetchShifts();
-            }}
+            onClick={() => setActiveTab("settings")}
             className={`flex items-center gap-2 px-3.5 sm:px-4 py-2 text-xs font-black rounded-xl transition whitespace-nowrap ${
-              activeTab === "shifts"
-                ? "bg-amber-600 text-white shadow-md shadow-amber-500/25 ring-2 ring-amber-400/20"
+              activeTab === "settings"
+                ? "bg-slate-900 text-white shadow-md shadow-slate-900/25 ring-2 ring-slate-400/20"
                 : "text-slate-600 hover:bg-slate-100"
             }`}
           >
-            <Coins className="w-4 h-4" />
-            <span>Rekap Tutup Shift Kasir (Z-Report)</span>
+            <Settings className="w-4 h-4" />
+            <span>Pengaturan Toko & QRIS</span>
           </button>
         </div>
       </div>
@@ -1027,7 +1165,14 @@ export default function AdminPage() {
                           <tr key={p.id} className="hover:bg-slate-50 transition">
                             <td className="py-3 px-4 whitespace-nowrap">
                               <div className="font-bold text-slate-900 text-sm">{p.name}</div>
-                              <div className="text-[11px] text-slate-500 font-mono font-semibold">SKU: {p.sku}</div>
+                              <div className="flex items-center gap-2 mt-0.5">
+                                <span className="text-[11px] text-slate-500 font-mono font-semibold">SKU: {p.sku}</span>
+                                {p.hasPack && p.packPrice && (
+                                  <span className="text-[10px] font-extrabold bg-blue-50 text-blue-700 px-2 py-0.5 rounded border border-blue-200">
+                                    {p.packName || "Pack"} @{p.packQuantity}pcs: Rp {p.packPrice.toLocaleString("id-ID")}
+                                  </span>
+                                )}
+                              </div>
                             </td>
                             <td className="py-3 px-4 whitespace-nowrap">
                               <span className="inline-block bg-slate-100 text-slate-800 font-bold px-2.5 py-1 rounded-md text-xs border border-slate-300 shadow-2xs">
@@ -1364,16 +1509,35 @@ export default function AdminPage() {
                 <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
                   {reportSubTab === "daily" ? "Laba Bersih Hari Ini" : "Keuntungan Bersih"}
                 </span>
-                <div className="text-base sm:text-xl font-black text-emerald-600 mt-1 truncate">
-                  Rp{" "}
-                  {(reportSubTab === "daily"
-                    ? reportData?.daily.profit || 0
-                    : reportData?.rangeSummary.profit || 0
-                  ).toLocaleString("id-ID")}
-                </div>
-                <span className="text-[10px] text-emerald-600 font-bold flex items-center gap-0.5 mt-0.5">
-                  <TrendingUp className="w-3 h-3" /> Laba Kotor Toko
-                </span>
+                {(() => {
+                  const currentProfit =
+                    reportSubTab === "daily"
+                      ? reportData?.daily.profit || 0
+                      : reportData?.rangeSummary.profit || 0;
+                  const isNegative = currentProfit < 0;
+
+                  return (
+                    <>
+                      <div
+                        className={`text-base sm:text-xl font-black mt-1 truncate ${
+                          isNegative ? "text-rose-600" : "text-emerald-600"
+                        }`}
+                      >
+                        {isNegative
+                          ? `-Rp ${Math.abs(currentProfit).toLocaleString("id-ID")}`
+                          : `Rp ${currentProfit.toLocaleString("id-ID")}`}
+                      </div>
+                      <span
+                        className={`text-[10px] font-bold flex items-center gap-0.5 mt-0.5 ${
+                          isNegative ? "text-rose-600" : "text-emerald-600"
+                        }`}
+                      >
+                        <TrendingUp className={`w-3 h-3 ${isNegative ? "rotate-180 text-rose-600" : ""}`} />{" "}
+                        {isNegative ? "Defisit Laba Kotor" : "Laba Kotor Toko"}
+                      </span>
+                    </>
+                  );
+                })()}
               </div>
 
               <div className="bg-white p-3.5 sm:p-4 rounded-2xl border border-slate-200 shadow-sm">
@@ -1408,6 +1572,96 @@ export default function AdminPage() {
                 </div>
                 <span className="text-[10px] text-emerald-600 font-bold">Rasio Keuntungan</span>
               </div>
+            </div>
+
+            {/* Rincian Pemasukan per Metode Pembayaran (Tunai, QRIS, Transfer) */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {/* Tunai / Cash */}
+              {(() => {
+                const cashData = reportData?.paymentMethods.find((p) => (p.method || "").toUpperCase() === "CASH");
+                const cashTotal = cashData?.total || 0;
+                const cashCount =
+                  cashData?.count ??
+                  (reportData?.transactions.filter((t) => (t.paymentMethod || "").toUpperCase() === "CASH" && t.status !== "VOIDED").length ?? 0);
+                return (
+                  <div className="bg-emerald-50/70 border-2 border-emerald-200 p-3.5 sm:p-4 rounded-2xl flex items-center justify-between shadow-xs">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center font-black shadow-xs shrink-0">
+                        <Banknote className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <span className="text-[10px] font-extrabold text-emerald-800 uppercase tracking-wider block">
+                          Penerimaan Tunai (Laci)
+                        </span>
+                        <div className="text-base sm:text-xl font-black text-emerald-950 mt-0.5">
+                          Rp {cashTotal.toLocaleString("id-ID")}
+                        </div>
+                      </div>
+                    </div>
+                    <span className="px-2.5 py-1 text-xs font-black rounded-lg bg-emerald-100 text-emerald-800 border border-emerald-300 shrink-0">
+                      {cashCount} Struk
+                    </span>
+                  </div>
+                );
+              })()}
+
+              {/* QRIS Merchant */}
+              {(() => {
+                const qrisData = reportData?.paymentMethods.find((p) => (p.method || "").toUpperCase() === "QRIS");
+                const qrisTotal = qrisData?.total || 0;
+                const qrisCount =
+                  qrisData?.count ??
+                  (reportData?.transactions.filter((t) => (t.paymentMethod || "").toUpperCase() === "QRIS" && t.status !== "VOIDED").length ?? 0);
+                return (
+                  <div className="bg-indigo-50/70 border-2 border-indigo-200 p-3.5 sm:p-4 rounded-2xl flex items-center justify-between shadow-xs">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-black shadow-xs shrink-0">
+                        <QrCode className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <span className="text-[10px] font-extrabold text-indigo-800 uppercase tracking-wider block">
+                          Penerimaan QRIS Digital
+                        </span>
+                        <div className="text-base sm:text-xl font-black text-indigo-950 mt-0.5">
+                          Rp {qrisTotal.toLocaleString("id-ID")}
+                        </div>
+                      </div>
+                    </div>
+                    <span className="px-2.5 py-1 text-xs font-black rounded-lg bg-indigo-100 text-indigo-800 border border-indigo-300 shrink-0">
+                      {qrisCount} Struk
+                    </span>
+                  </div>
+                );
+              })()}
+
+              {/* Transfer Bank */}
+              {(() => {
+                const tfData = reportData?.paymentMethods.find((p) => (p.method || "").toUpperCase() === "TRANSFER");
+                const tfTotal = tfData?.total || 0;
+                const tfCount =
+                  tfData?.count ??
+                  (reportData?.transactions.filter((t) => (t.paymentMethod || "").toUpperCase() === "TRANSFER" && t.status !== "VOIDED").length ?? 0);
+                return (
+                  <div className="bg-blue-50/70 border-2 border-blue-200 p-3.5 sm:p-4 rounded-2xl flex items-center justify-between shadow-xs">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center font-black shadow-xs shrink-0">
+                        <CreditCard className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <span className="text-[10px] font-extrabold text-blue-800 uppercase tracking-wider block">
+                          Transfer Rekening Bank
+                        </span>
+                        <div className="text-base sm:text-xl font-black text-blue-950 mt-0.5">
+                          Rp {tfTotal.toLocaleString("id-ID")}
+                        </div>
+                      </div>
+                    </div>
+                    <span className="px-2.5 py-1 text-xs font-black rounded-lg bg-blue-100 text-blue-800 border border-blue-300 shrink-0">
+                      {tfCount} Struk
+                    </span>
+                  </div>
+                );
+              })()}
             </div>
 
             {/* DUA GRAFIK MODERN: Composed Bar + Area Chart & Donut Chart Breakdown */}
@@ -1559,7 +1813,7 @@ export default function AdminPage() {
                   <span className="text-xs text-slate-500 font-semibold">Paling banyak terjual</span>
                 </div>
 
-                <div className="divide-y divide-slate-100 flex-1 overflow-y-auto mt-2">
+                <div className="divide-y divide-slate-100 flex-1 max-h-[380px] overflow-y-auto mt-2 pr-1.5">
                   {!reportData || reportData.bestSellers.length === 0 ? (
                     <div className="p-8 text-center text-slate-400 text-xs font-medium">Belum ada data barang terjual.</div>
                   ) : (
@@ -1597,64 +1851,188 @@ export default function AdminPage() {
 
               {/* Rincian Transaksi Terakhir (7 Kolom) */}
               <div className="lg:col-span-7 bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col">
-                <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                  <h3 className="font-extrabold text-slate-900 text-sm">Daftar Transaksi Kasir</h3>
-                  <span className="text-xs text-slate-500 font-semibold">
-                    {reportData?.transactions.length || 0} transaksi tercatat
-                  </span>
-                </div>
+                {(() => {
+                  const filteredTransactions = (reportData?.transactions || []).filter((tx) => {
+                    if (paymentFilter === "ALL") return true;
+                    return (tx.paymentMethod || "").toUpperCase() === paymentFilter;
+                  });
 
-                <div className="overflow-x-auto max-h-[380px] overflow-y-auto flex-1 mt-2 rounded-xl border border-slate-200 relative shadow-2xs">
-                  <table className="w-full text-left text-xs">
-                    <thead className="bg-slate-100 text-slate-800 uppercase font-extrabold sticky top-0 z-10 shadow-xs border-b border-slate-200">
-                      <tr>
-                        <th className="py-2.5 px-3 whitespace-nowrap bg-slate-100">Invoice</th>
-                        <th className="py-2.5 px-3 whitespace-nowrap bg-slate-100">Waktu</th>
-                        <th className="py-2.5 px-3 whitespace-nowrap bg-slate-100">Kasir</th>
-                        <th className="py-2.5 px-3 text-right whitespace-nowrap bg-slate-100">Total</th>
-                        <th className="py-2.5 px-3 text-right whitespace-nowrap bg-slate-100">Laba</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100 font-medium">
-                      {!reportData || reportData.transactions.length === 0 ? (
-                        <tr>
-                          <td colSpan={5} className="py-8 text-center text-slate-400 font-medium">
-                            Tidak ada data transaksi.
-                          </td>
-                        </tr>
-                      ) : (
-                        reportData.transactions.map((tx) => (
-                          <tr key={tx.id} className="hover:bg-slate-50 transition">
-                            <td className="py-2.5 px-3 font-mono font-bold text-slate-900 whitespace-nowrap">
-                              {tx.invoiceNumber}
-                            </td>
-                            <td className="py-2.5 px-3 text-slate-600 whitespace-nowrap">
-                              {new Date(tx.createdAt).toLocaleDateString("id-ID", {
-                                day: "2-digit",
-                                month: "short",
-                              })}{" "}
-                              {new Date(tx.createdAt).toLocaleTimeString("id-ID", {
-                                hour: "2-digit",
-                                minute: "2-digit",
-                              })}
-                            </td>
-                            <td className="py-2.5 px-3 text-slate-800 font-semibold whitespace-nowrap">{tx.cashier.name}</td>
-                            <td className="py-2.5 px-3 text-right font-black text-slate-900 whitespace-nowrap">
-                              Rp {tx.totalAmount.toLocaleString("id-ID")}
-                            </td>
-                            <td className="py-2.5 px-3 text-right font-bold text-emerald-700 whitespace-nowrap">
-                              +Rp {(tx.totalAmount - tx.totalCost).toLocaleString("id-ID")}
-                            </td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-                </div>
+                  return (
+                    <>
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-slate-100 gap-2">
+                        <div className="flex items-center gap-2">
+                          <h3 className="font-extrabold text-slate-900 text-sm">Daftar Transaksi Kasir</h3>
+                          <span className="text-xs text-slate-500 font-semibold">
+                            ({filteredTransactions.length} dari {reportData?.transactions.length || 0} transaksi)
+                          </span>
+                        </div>
+
+                        {/* Filter Tab Cepat Metode Pembayaran */}
+                        <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5">
+                          {[
+                            { id: "ALL", label: "Semua" },
+                            { id: "CASH", label: "💵 Tunai" },
+                            { id: "QRIS", label: "📱 QRIS" },
+                            { id: "TRANSFER", label: "🏦 Transfer" },
+                          ].map((f) => {
+                            const isActive = paymentFilter === f.id;
+                            return (
+                              <button
+                                key={f.id}
+                                type="button"
+                                onClick={() => setPaymentFilter(f.id as "ALL" | "CASH" | "QRIS" | "TRANSFER")}
+                                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition whitespace-nowrap ${
+                                  isActive
+                                    ? "bg-slate-900 text-white shadow-2xs"
+                                    : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                                }`}
+                              >
+                                {f.label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      <div className="overflow-x-auto max-h-[380px] overflow-y-auto flex-1 mt-2 rounded-xl border border-slate-200 relative shadow-2xs">
+                        <table className="w-full text-left text-xs">
+                          <thead className="bg-slate-100 text-slate-800 uppercase font-extrabold sticky top-0 z-10 shadow-xs border-b border-slate-200">
+                            <tr>
+                              <th className="py-2.5 px-3 whitespace-nowrap bg-slate-100">Invoice</th>
+                              <th className="py-2.5 px-3 whitespace-nowrap bg-slate-100">Waktu</th>
+                              <th className="py-2.5 px-3 whitespace-nowrap bg-slate-100">Kasir</th>
+                              <th className="py-2.5 px-3 whitespace-nowrap bg-slate-100">Metode</th>
+                              <th className="py-2.5 px-3 text-right whitespace-nowrap bg-slate-100">Total</th>
+                              <th className="py-2.5 px-3 text-right whitespace-nowrap bg-slate-100">Laba</th>
+                              <th className="py-2.5 px-3 text-center whitespace-nowrap bg-slate-100">Aksi</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100 font-medium">
+                            {filteredTransactions.length === 0 ? (
+                              <tr>
+                                <td colSpan={7} className="py-8 text-center text-slate-400 font-medium">
+                                  {reportData?.transactions.length === 0
+                                    ? "Tidak ada data transaksi."
+                                    : "Tidak ada transaksi untuk filter metode pembayaran ini."}
+                                </td>
+                              </tr>
+                            ) : (
+                              filteredTransactions.map((tx) => {
+                                const isVoided = tx.status === "VOIDED";
+                                const method = (tx.paymentMethod || "CASH").toUpperCase();
+
+                                return (
+                                  <tr key={tx.id} className={`hover:bg-slate-50 transition ${isVoided ? "bg-rose-50/50" : ""}`}>
+                                    <td className="py-2.5 px-3 font-mono font-bold text-slate-900 whitespace-nowrap">
+                                      <div className="flex items-center gap-1.5">
+                                        <span className={isVoided ? "line-through text-slate-400" : ""}>{tx.invoiceNumber}</span>
+                                        {isVoided && (
+                                          <span className="px-1.5 py-0.2 text-[9px] font-black bg-rose-100 text-rose-700 rounded border border-rose-200" title={tx.voidReason || "Dibatalkan"}>
+                                            VOID
+                                          </span>
+                                        )}
+                                      </div>
+                                    </td>
+                                    <td className="py-2.5 px-3 text-slate-600 whitespace-nowrap">
+                                      {new Date(tx.createdAt).toLocaleDateString("id-ID", {
+                                        day: "2-digit",
+                                        month: "short",
+                                      })}{" "}
+                                      {new Date(tx.createdAt).toLocaleTimeString("id-ID", {
+                                        hour: "2-digit",
+                                        minute: "2-digit",
+                                      })}
+                                    </td>
+                                    <td className="py-2.5 px-3 text-slate-800 font-semibold whitespace-nowrap">{tx.cashier.name}</td>
+                                    
+                                    {/* Kolom Metode Bayar */}
+                                    <td className="py-2.5 px-3 whitespace-nowrap">
+                                      {method === "QRIS" ? (
+                                        <span className="inline-flex items-center px-2 py-0.5 text-[10px] font-black rounded-md bg-indigo-50 text-indigo-700 border border-indigo-200">
+                                          📱 QRIS
+                                        </span>
+                                      ) : method === "TRANSFER" ? (
+                                        <span className="inline-flex items-center px-2 py-0.5 text-[10px] font-black rounded-md bg-blue-50 text-blue-700 border border-blue-200">
+                                          🏦 Transfer
+                                        </span>
+                                      ) : (
+                                        <span className="inline-flex items-center px-2 py-0.5 text-[10px] font-black rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                          💵 Tunai
+                                        </span>
+                                      )}
+                                    </td>
+
+                                    <td className="py-2.5 px-3 text-right font-black whitespace-nowrap">
+                                      {isVoided ? (
+                                        <span className="line-through text-slate-400">Rp {tx.totalAmount.toLocaleString("id-ID")}</span>
+                                      ) : (
+                                        <span className="text-slate-900">Rp {tx.totalAmount.toLocaleString("id-ID")}</span>
+                                      )}
+                                    </td>
+                                    <td className="py-2.5 px-3 text-right font-bold whitespace-nowrap">
+                                      {isVoided ? (
+                                        <span className="line-through text-slate-400">Rp 0</span>
+                                      ) : (() => {
+                                        const profit = tx.totalAmount - tx.totalCost;
+                                        if (profit > 0) {
+                                          return <span className="text-emerald-700 font-bold">+Rp {profit.toLocaleString("id-ID")}</span>;
+                                        } else if (profit < 0) {
+                                          return <span className="text-rose-600 font-black">-Rp {Math.abs(profit).toLocaleString("id-ID")}</span>;
+                                        }
+                                        return <span className="text-slate-500 font-medium">Rp 0</span>;
+                                      })()}
+                                    </td>
+                                    <td className="py-2.5 px-3 text-center whitespace-nowrap">
+                                      {isVoided ? (
+                                        <span className="text-[10px] text-rose-600 font-bold italic" title={tx.voidReason || "Dibatalkan"}>
+                                          {tx.voidReason ? (tx.voidReason.length > 15 ? tx.voidReason.slice(0, 15) + "..." : tx.voidReason) : "Dibatalkan"}
+                                        </span>
+                                      ) : (
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setVoidingTx({
+                                              id: tx.id,
+                                              invoiceNumber: tx.invoiceNumber,
+                                              totalAmount: tx.totalAmount,
+                                            });
+                                            setVoidReasonInput("");
+                                          }}
+                                          className="px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 hover:text-rose-800 rounded-lg text-[11px] font-bold border border-rose-200 transition"
+                                        >
+                                          Batal (Void)
+                                        </button>
+                                      )}
+                                    </td>
+                                  </tr>
+                                );
+                              })
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    </>
+                  );
+                })()}
               </div>
             </div>
           </div>
         )}
+
+        {/* ========================================================================= */}
+        {/* TAB: BUKU PENGELUARAN & BELANJA TOKO                                     */}
+        {/* ========================================================================= */}
+        {activeTab === "expenses" && <ExpenseManagerTab />}
+
+        {/* ========================================================================= */}
+        {/* TAB: PAKET BUNDLING PROMO & BARCODE FISIK                                */}
+        {/* ========================================================================= */}
+        {activeTab === "bundles" && <BundleManagerTab />}
+
+        {/* ========================================================================= */}
+        {/* TAB: PENGATURAN PROFIL TOKO & QRIS DINAMIS                               */}
+        {/* ========================================================================= */}
+        {activeTab === "settings" && <StoreSettingsTab />}
 
         {/* ========================================================================= */}
         {/* TAB 3: KELOLA KARYAWAN & ROLE PENGGUNA (USER RBAC MANAGEMENT)            */}
@@ -1771,32 +2149,367 @@ export default function AdminPage() {
         )}
 
         {/* TAB 4: RIWAYAT TUTUP SHIFT KASIR (Z-REPORT) */}
-        {activeTab === "shifts" && (
-          <div className="space-y-4">
-            <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-xs flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <h3 className="font-extrabold text-base text-slate-900 flex items-center gap-2">
-                  <Coins className="w-5 h-5 text-amber-600" />
-                  Rekap Tutup Kasir &amp; Laci Uang (Shift)
-                </h3>
-                <p className="text-xs text-slate-500">
-                  Audit pencocokan uang tunai fisik laci kasir vs omzet penjualan sistem (Laporan Z-Report)
-                </p>
+        {activeTab === "shifts" && (() => {
+          const closedShifts = shifts.filter((s) => s.status === "CLOSED" || s.closingCash != null);
+          const accurateShiftCount = closedShifts.filter((s) => {
+            const expected = (s.openingFloat || 0) + (s.totalCashSales || 0);
+            const actual = s.closingCash ?? expected;
+            return actual - expected === 0;
+          }).length;
+          const shiftAccuracyPct = closedShifts.length > 0 ? Math.round((accurateShiftCount / closedShifts.length) * 100) : 100;
+
+          const totalShiftDiscrepancy = closedShifts.reduce((acc, s) => {
+            const expected = (s.openingFloat || 0) + (s.totalCashSales || 0);
+            const actual = s.closingCash ?? expected;
+            return acc + (actual - expected);
+          }, 0);
+
+          const topShift = [...closedShifts].sort(
+            (a, b) => ((b.totalCashSales || 0) + (b.totalQrisSales || 0)) - ((a.totalCashSales || 0) + (a.totalQrisSales || 0))
+          )[0];
+
+          // Data & Metrik untuk Analisis Visual Shift (Tremor / Stripe Modern Analytics)
+          const totalCashAllShifts = shifts.reduce((sum, s) => sum + (s.totalCashSales || 0), 0);
+          const totalQrisAllShifts = shifts.reduce((sum, s) => sum + (s.totalQrisSales || 0), 0);
+          const totalSalesAllShifts = totalCashAllShifts + totalQrisAllShifts;
+          const cashPct = totalSalesAllShifts > 0 ? Math.round((totalCashAllShifts / totalSalesAllShifts) * 100) : 0;
+          const qrisPct = totalSalesAllShifts > 0 ? 100 - cashPct : 0;
+
+          // Data untuk Grafik Recharts Composed Chart (10 sesi terakhir)
+          const shiftChartData = [...shifts]
+            .slice(0, 10)
+            .reverse()
+            .map((s) => {
+              const dateStr = new Date(s.openedAt).toLocaleDateString("id-ID", { day: "numeric", month: "short" });
+              const shiftTag = s.shiftType === "SHIFT_1" ? "Pagi" : s.shiftType === "SHIFT_2" ? "Siang" : "Full";
+              const firstName = s.cashierName.split(" ")[0] || s.cashierName;
+              const expected = (s.openingFloat || 0) + (s.totalCashSales || 0);
+              const actual = s.closingCash ?? expected;
+              const diff = actual - expected;
+
+              return {
+                label: `${firstName} • ${dateStr} (${shiftTag})`,
+                cashier: s.cashierName,
+                date: dateStr,
+                shiftTag,
+                tunai: s.totalCashSales || 0,
+                qris: s.totalQrisSales || 0,
+                total: (s.totalCashSales || 0) + (s.totalQrisSales || 0),
+                diff,
+                status: s.status,
+              };
+            });
+
+          const shiftPaymentDonut = [
+            { name: "Uang Tunai", value: totalCashAllShifts, color: "#10b981" },
+            { name: "QRIS Dinamis", value: totalQrisAllShifts, color: "#6366f1" },
+          ];
+
+          return (
+            <div className="space-y-5">
+              <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-xs flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h3 className="font-extrabold text-base text-slate-900 flex items-center gap-2">
+                    <Coins className="w-5 h-5 text-amber-600" />
+                    Rekap Tutup Kasir &amp; Laci Uang (Shift)
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Audit pencocokan uang tunai fisik laci kasir vs omzet penjualan sistem (Laporan Z-Report)
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={fetchShifts}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold rounded-xl transition flex items-center gap-1.5"
+                >
+                  <span>Muat Ulang Shift</span>
+                </button>
               </div>
 
-              <button
-                type="button"
-                onClick={fetchShifts}
-                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold rounded-xl transition flex items-center gap-1.5"
-              >
-                <span>Muat Ulang Shift</span>
-              </button>
-            </div>
+              {/* 3 KPI Summary Cards Audit Shift */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                {/* Card 1: Akurasi Kasir */}
+                <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0 border border-emerald-100">
+                    <ShieldCheck className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <div className="text-xs font-bold text-slate-500">Akurasi Setoran Fisik Kasir</div>
+                    <div className="text-xl font-black text-slate-900 mt-0.5">{shiftAccuracyPct}% Sesuai Audit</div>
+                    <div className="text-[11px] text-slate-500 font-medium">
+                      {accurateShiftCount} dari {closedShifts.length} shift pas tanpa selisih
+                    </div>
+                  </div>
+                </div>
 
-            <div className="bg-white rounded-3xl border border-slate-200 shadow-xs overflow-hidden">
-              <div className="overflow-x-auto">
-                {shiftsLoading ? (
-                  <div className="py-16 text-center text-xs text-slate-400">Memuat riwayat shift kasir...</div>
+                {/* Card 2: Akumulasi Selisih Kasir */}
+                <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex items-center gap-4">
+                  <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 border ${
+                    totalShiftDiscrepancy === 0
+                      ? "bg-emerald-50 text-emerald-600 border-emerald-100"
+                      : totalShiftDiscrepancy > 0
+                      ? "bg-blue-50 text-blue-600 border-blue-100"
+                      : "bg-rose-50 text-rose-600 border-rose-100"
+                  }`}>
+                    <Coins className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <div className="text-xs font-bold text-slate-500">Akumulasi Selisih Laci Uang</div>
+                    <div className={`text-xl font-black mt-0.5 ${
+                      totalShiftDiscrepancy === 0
+                        ? "text-slate-900"
+                        : totalShiftDiscrepancy > 0
+                        ? "text-blue-700"
+                        : "text-rose-700"
+                    }`}>
+                      {totalShiftDiscrepancy === 0
+                        ? "Rp 0 (Seimbang)"
+                        : totalShiftDiscrepancy > 0
+                        ? `+Rp ${totalShiftDiscrepancy.toLocaleString("id-ID")}`
+                        : `-Rp ${Math.abs(totalShiftDiscrepancy).toLocaleString("id-ID")}`}
+                    </div>
+                    <div className="text-[11px] text-slate-500 font-medium">
+                      {totalShiftDiscrepancy < 0 ? "⚠️ Terdapat selisih minus kasir" : totalShiftDiscrepancy > 0 ? "Surplus kelebihan uang laci" : "Semua pembukuan kasir seimbang"}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Card 3: Shift Terproduktif */}
+                <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center shrink-0 border border-amber-100">
+                    <TrendingUp className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <div className="text-xs font-bold text-slate-500">Shift Terproduktif / Rekor Omzet</div>
+                    <div className="text-xl font-black text-slate-900 mt-0.5">
+                      {topShift ? `Rp ${((topShift.totalCashSales || 0) + (topShift.totalQrisSales || 0)).toLocaleString("id-ID")}` : "Rp 0"}
+                    </div>
+                    <div className="text-[11px] text-slate-500 font-medium truncate max-w-[220px]">
+                      {topShift ? `${topShift.cashierName} (${topShift.shiftType === "SHIFT_1" ? "Shift Pagi" : topShift.shiftType === "SHIFT_2" ? "Shift Siang" : "Full Day"})` : "Belum ada riwayat shift"}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* COMMAND CENTER ANALITIK SHIFT: Composed Bar & Area Chart (8 Kolom) + Donut Breakdown (4 Kolom) */}
+              {shiftChartData.length > 0 && (
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+                  {/* Grafik Utama (8 Kolom): Composed Tunai vs QRIS + Kurva Tren */}
+                  <div className="lg:col-span-8 bg-white p-5 rounded-3xl border border-slate-200 shadow-xs flex flex-col justify-between">
+                    <div>
+                      <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-100">
+                        <div>
+                          <h4 className="font-extrabold text-sm text-slate-900 flex items-center gap-2">
+                            <BarChart3 className="w-4 h-4 text-emerald-600" />
+                            Performa Setoran Kasir per Shift
+                          </h4>
+                          <p className="text-[11px] text-slate-500">
+                            Perbandingan penerimaan Tunai Laci vs QRIS Dinamis &amp; kurva tren omzet
+                          </p>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2 text-[11px] font-bold">
+                          <span className="px-2.5 py-1 bg-emerald-50 text-emerald-700 rounded-lg border border-emerald-200 flex items-center gap-1.5 shadow-2xs">
+                            <span className="w-2 h-2 rounded-full bg-emerald-600 inline-block" />
+                            Tunai: Rp {totalCashAllShifts.toLocaleString("id-ID")}
+                          </span>
+                          <span className="px-2.5 py-1 bg-indigo-50 text-indigo-700 rounded-lg border border-indigo-200 flex items-center gap-1.5 shadow-2xs">
+                            <span className="w-2 h-2 rounded-full bg-indigo-600 inline-block" />
+                            QRIS: Rp {totalQrisAllShifts.toLocaleString("id-ID")}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="h-72 w-full pt-3">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <ComposedChart data={shiftChartData} margin={{ top: 15, right: 10, left: -5, bottom: 20 }}>
+                          <defs>
+                            <linearGradient id="shiftCashGrad" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="0%" stopColor="#10b981" stopOpacity={0.95} />
+                              <stop offset="100%" stopColor="#059669" stopOpacity={0.8} />
+                            </linearGradient>
+                            <linearGradient id="shiftQrisGrad" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="0%" stopColor="#818cf8" stopOpacity={0.95} />
+                              <stop offset="100%" stopColor="#4f46e5" stopOpacity={0.8} />
+                            </linearGradient>
+                            <linearGradient id="shiftTrendArea" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="0%" stopColor="#0ea5e9" stopOpacity={0.2} />
+                              <stop offset="100%" stopColor="#0ea5e9" stopOpacity={0.0} />
+                            </linearGradient>
+                          </defs>
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                          <XAxis
+                            dataKey="label"
+                            stroke="#64748b"
+                            fontSize={10}
+                            fontWeight={600}
+                            tickLine={false}
+                            interval={0}
+                            angle={-10}
+                            textAnchor="end"
+                          />
+                          <YAxis
+                            stroke="#64748b"
+                            fontSize={10}
+                            fontWeight={600}
+                            tickLine={false}
+                            axisLine={false}
+                            tickFormatter={(v) => `Rp ${(v / 1000).toLocaleString("id-ID")}k`}
+                          />
+                          <Tooltip
+                            content={({ active, payload }: any) => {
+                              if (active && payload && payload.length) {
+                                const d = payload[0].payload;
+                                return (
+                                  <div className="bg-slate-900/95 text-white p-3.5 rounded-2xl shadow-2xl border border-slate-700/80 text-xs backdrop-blur-md space-y-2 min-w-[210px]">
+                                    <div className="flex items-center justify-between border-b border-slate-800 pb-1.5">
+                                      <span className="font-extrabold text-slate-100">{d.cashier}</span>
+                                      <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-800 text-slate-300">
+                                        {d.shiftTag}
+                                      </span>
+                                    </div>
+                                    <div className="text-[11px] text-slate-400 font-medium">Tanggal: {d.date}</div>
+                                    <div className="space-y-1.5 pt-1">
+                                      <div className="flex justify-between items-center text-emerald-400 font-bold">
+                                        <span className="flex items-center gap-1.5">
+                                          <span className="w-2 h-2 rounded-full bg-emerald-400" /> Tunai:
+                                        </span>
+                                        <span>Rp {Number(d.tunai).toLocaleString("id-ID")}</span>
+                                      </div>
+                                      <div className="flex justify-between items-center text-indigo-400 font-bold">
+                                        <span className="flex items-center gap-1.5">
+                                          <span className="w-2 h-2 rounded-full bg-indigo-400" /> QRIS:
+                                        </span>
+                                        <span>Rp {Number(d.qris).toLocaleString("id-ID")}</span>
+                                      </div>
+                                      <div className="flex justify-between items-center text-sky-300 font-black pt-1.5 border-t border-slate-800 text-[13px]">
+                                        <span>Total Omzet:</span>
+                                        <span>Rp {Number(d.total).toLocaleString("id-ID")}</span>
+                                      </div>
+                                    </div>
+                                  </div>
+                                );
+                              }
+                              return null;
+                            }}
+                          />
+                          <Area
+                            type="monotone"
+                            dataKey="total"
+                            fill="url(#shiftTrendArea)"
+                            stroke="none"
+                          />
+                          <Bar
+                            dataKey="tunai"
+                            name="Penjualan Tunai"
+                            fill="url(#shiftCashGrad)"
+                            radius={[6, 6, 0, 0]}
+                            maxBarSize={32}
+                          />
+                          <Bar
+                            dataKey="qris"
+                            name="Penjualan QRIS"
+                            fill="url(#shiftQrisGrad)"
+                            radius={[6, 6, 0, 0]}
+                            maxBarSize={32}
+                          />
+                          <Line
+                            type="monotone"
+                            dataKey="total"
+                            name="Total Omzet"
+                            stroke="#0284c7"
+                            strokeWidth={2.5}
+                            dot={{ r: 4, fill: "#0284c7", stroke: "#ffffff", strokeWidth: 2 }}
+                            activeDot={{ r: 6, fill: "#0284c7", stroke: "#ffffff", strokeWidth: 2 }}
+                          />
+                        </ComposedChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+
+                  {/* Donut Chart (4 Kolom): Rasio Pembayaran Tunai vs QRIS */}
+                  <div className="lg:col-span-4 bg-white p-5 rounded-3xl border border-slate-200 shadow-xs flex flex-col justify-between">
+                    <div>
+                      <h4 className="font-extrabold text-sm text-slate-900 flex items-center gap-2">
+                        <PieIcon className="w-4 h-4 text-indigo-600" />
+                        Rasio Setoran Kasir
+                      </h4>
+                      <p className="text-[11px] text-slate-500">
+                        Proporsi uang fisik laci kasir vs pembayaran QRIS digital
+                      </p>
+                    </div>
+
+                    <div className="h-44 w-full relative flex items-center justify-center my-2">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                          <Pie
+                            data={shiftPaymentDonut}
+                            innerRadius={48}
+                            outerRadius={68}
+                            paddingAngle={4}
+                            dataKey="value"
+                          >
+                            {shiftPaymentDonut.map((entry, index) => (
+                              <Cell key={`cell-${index}`} fill={entry.color} />
+                            ))}
+                          </Pie>
+                          <Tooltip
+                            formatter={(val: unknown) => `Rp ${Number(val).toLocaleString("id-ID")}`}
+                            contentStyle={{
+                              backgroundColor: "#0f172a",
+                              borderRadius: "12px",
+                              border: "none",
+                              color: "#fff",
+                              fontSize: "12px",
+                            }}
+                          />
+                        </PieChart>
+                      </ResponsiveContainer>
+                      {/* Center Stat Badge */}
+                      <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                        <span className="text-xl font-black text-slate-900">{cashPct}%</span>
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Tunai Laci</span>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2.5 pt-2 border-t border-slate-100 text-xs">
+                      <div>
+                        <div className="flex justify-between items-center font-bold mb-1">
+                          <span className="flex items-center gap-1.5 text-emerald-800">
+                            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" /> Tunai Fisik Laci
+                          </span>
+                          <span className="text-slate-900 font-black">
+                            Rp {totalCashAllShifts.toLocaleString("id-ID")} ({cashPct}%)
+                          </span>
+                        </div>
+                        <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                          <div className="bg-emerald-500 h-1.5 rounded-full transition-all duration-500" style={{ width: `${cashPct}%` }} />
+                        </div>
+                      </div>
+
+                      <div>
+                        <div className="flex justify-between items-center font-bold mb-1">
+                          <span className="flex items-center gap-1.5 text-indigo-800">
+                            <span className="w-2.5 h-2.5 rounded-full bg-indigo-500" /> QRIS Dinamis
+                          </span>
+                          <span className="text-slate-900 font-black">
+                            Rp {totalQrisAllShifts.toLocaleString("id-ID")} ({qrisPct}%)
+                          </span>
+                        </div>
+                        <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                          <div className="bg-indigo-500 h-1.5 rounded-full transition-all duration-500" style={{ width: `${qrisPct}%` }} />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div className="bg-white rounded-3xl border border-slate-200 shadow-xs overflow-hidden">
+                <div className="overflow-x-auto">
+                  {shiftsLoading ? (
+                    <div className="py-16 text-center text-xs text-slate-400">Memuat riwayat shift kasir...</div>
                 ) : shifts.length === 0 ? (
                   <div className="py-16 text-center text-slate-400 text-xs">
                     Belum ada riwayat shift yang tersimpan.
@@ -1935,7 +2648,8 @@ export default function AdminPage() {
               </div>
             </div>
           </div>
-        )}
+        );
+      })()}
       </div>
 
       {/* ========================================================================= */}
@@ -2052,6 +2766,62 @@ export default function AdminPage() {
                     onChange={(e) => setFormData({ ...formData, minStock: Number(e.target.value) || 1 })}
                     className="w-full px-3.5 py-2.5 text-sm font-extrabold text-slate-900 bg-white border-2 border-slate-300 rounded-xl focus:outline-none focus:border-emerald-600"
                   />
+                </div>
+
+                {/* Multi-Satuan (Harga Pack / Lusin / Rim) */}
+                <div className="md:col-span-2 bg-slate-50 border border-slate-200 rounded-2xl p-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={formData.hasPack}
+                        onChange={(e) => setFormData({ ...formData, hasPack: e.target.checked })}
+                        className="w-4 h-4 text-emerald-600 rounded"
+                      />
+                      <span className="text-xs font-black text-slate-800 uppercase tracking-wider">
+                        Aktifkan Harga Grosir / Per Pack (Multi-Satuan)
+                      </span>
+                    </label>
+                    <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full">
+                      Pcs vs Pack
+                    </span>
+                  </div>
+                  {formData.hasPack && (
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
+                      <div>
+                        <label className="text-[11px] font-bold text-slate-600 block mb-1">Nama Satuan Pack</label>
+                        <input
+                          type="text"
+                          placeholder="Contoh: Pack, Lusin, Rim"
+                          value={formData.packName || ""}
+                          onChange={(e) => setFormData({ ...formData, packName: e.target.value })}
+                          className="w-full px-3 py-2 text-xs font-bold bg-white border border-slate-300 rounded-xl"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[11px] font-bold text-slate-600 block mb-1">Isi Barang (Pcs) per Pack</label>
+                        <input
+                          type="number"
+                          min={2}
+                          placeholder="Contoh: 10 atau 12"
+                          value={formData.packQuantity || ""}
+                          onChange={(e) => setFormData({ ...formData, packQuantity: Number(e.target.value) || 0 })}
+                          className="w-full px-3 py-2 text-xs font-bold bg-white border border-slate-300 rounded-xl"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[11px] font-bold text-slate-600 block mb-1">Harga Jual per Pack (Rp)</label>
+                        <input
+                          type="number"
+                          min={0}
+                          placeholder="Contoh: 45000"
+                          value={formData.packPrice || ""}
+                          onChange={(e) => setFormData({ ...formData, packPrice: Number(e.target.value) || 0 })}
+                          className="w-full px-3 py-2 text-xs font-bold bg-white border border-slate-300 rounded-xl"
+                        />
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -2218,6 +2988,62 @@ export default function AdminPage() {
                     className="w-full px-3.5 py-2 text-sm font-extrabold text-slate-900 bg-white border-2 border-slate-300 rounded-xl focus:outline-none focus:border-amber-600"
                   />
                 </div>
+
+                {/* Multi-Satuan (Harga Pack / Lusin / Rim) */}
+                <div className="md:col-span-2 bg-slate-50 border border-slate-200 rounded-2xl p-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={editFormData.hasPack}
+                        onChange={(e) => setEditFormData({ ...editFormData, hasPack: e.target.checked })}
+                        className="w-4 h-4 text-amber-600 rounded"
+                      />
+                      <span className="text-xs font-black text-slate-800 uppercase tracking-wider">
+                        Aktifkan Harga Grosir / Per Pack (Multi-Satuan)
+                      </span>
+                    </label>
+                    <span className="text-[10px] bg-amber-100 text-amber-800 font-bold px-2 py-0.5 rounded-full">
+                      Pcs vs Pack
+                    </span>
+                  </div>
+                  {editFormData.hasPack && (
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
+                      <div>
+                        <label className="text-[11px] font-bold text-slate-600 block mb-1">Nama Satuan Pack</label>
+                        <input
+                          type="text"
+                          placeholder="Contoh: Pack, Lusin, Rim"
+                          value={editFormData.packName || ""}
+                          onChange={(e) => setEditFormData({ ...editFormData, packName: e.target.value })}
+                          className="w-full px-3 py-2 text-xs font-bold bg-white border border-slate-300 rounded-xl"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[11px] font-bold text-slate-600 block mb-1">Isi Barang (Pcs) per Pack</label>
+                        <input
+                          type="number"
+                          min={2}
+                          placeholder="Contoh: 10 atau 12"
+                          value={editFormData.packQuantity || ""}
+                          onChange={(e) => setEditFormData({ ...editFormData, packQuantity: Number(e.target.value) || 0 })}
+                          className="w-full px-3 py-2 text-xs font-bold bg-white border border-slate-300 rounded-xl"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[11px] font-bold text-slate-600 block mb-1">Harga Jual per Pack (Rp)</label>
+                        <input
+                          type="number"
+                          min={0}
+                          placeholder="Contoh: 45000"
+                          value={editFormData.packPrice || ""}
+                          onChange={(e) => setEditFormData({ ...editFormData, packPrice: Number(e.target.value) || 0 })}
+                          className="w-full px-3 py-2 text-xs font-bold bg-white border border-slate-300 rounded-xl"
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
 
               <div className="pt-4 flex items-center justify-end gap-3 border-t border-slate-200">
@@ -2292,20 +3118,6 @@ export default function AdminPage() {
 
               <div>
                 <label className="text-xs font-extrabold text-slate-800 uppercase tracking-wider block mb-1">
-                  Password *
-                </label>
-                <input
-                  type="password"
-                  required
-                  placeholder="Minimal 6 karakter"
-                  value={userFormData.password}
-                  onChange={(e) => setUserFormData({ ...userFormData, password: e.target.value })}
-                  className="w-full px-3.5 py-2.5 text-sm font-bold text-slate-900 placeholder:text-slate-400 bg-white border-2 border-slate-300 rounded-xl focus:outline-none focus:border-blue-600"
-                />
-              </div>
-
-              <div>
-                <label className="text-xs font-extrabold text-slate-800 uppercase tracking-wider block mb-1">
                   Peran (Role) *
                 </label>
                 <select
@@ -2316,6 +3128,34 @@ export default function AdminPage() {
                   <option value="KARYAWAN">KARYAWAN (Hanya Layar Kasir POS)</option>
                   <option value="ADMIN">ADMIN (Akses Penuh Backoffice & Kasir)</option>
                 </select>
+              </div>
+
+              <div>
+                <label className="text-xs font-extrabold text-slate-800 uppercase tracking-wider block mb-1">
+                  {userFormData.role === "KARYAWAN" ? "PIN Kasir (4–6 Digit Angka) *" : "PIN / Password Admin *"}
+                </label>
+                <input
+                  type={userFormData.role === "KARYAWAN" ? "text" : "password"}
+                  required
+                  maxLength={userFormData.role === "KARYAWAN" ? 8 : 32}
+                  placeholder={userFormData.role === "KARYAWAN" ? "Contoh: 1234 atau 5678" : "Minimal 4 karakter / digit"}
+                  value={userFormData.password}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (userFormData.role === "KARYAWAN") {
+                      // Hanya izinkan digit angka untuk kasir
+                      setUserFormData({ ...userFormData, password: val.replace(/\D/g, "") });
+                    } else {
+                      setUserFormData({ ...userFormData, password: val });
+                    }
+                  }}
+                  className="w-full px-3.5 py-2.5 text-sm font-bold text-slate-900 placeholder:text-slate-400 bg-white border-2 border-slate-300 rounded-xl focus:outline-none focus:border-blue-600 font-mono tracking-wider"
+                />
+                <p className="text-[11px] text-slate-500 mt-1 font-medium">
+                  {userFormData.role === "KARYAWAN"
+                    ? "Kasir akan menggunakan PIN angka ini saat login di layar kasir POS."
+                    : "PIN/Sandi untuk membuka Backoffice Pemilik dan Layar Kasir."}
+                </p>
               </div>
 
               <div className="pt-3 flex items-center justify-end gap-2 border-t border-slate-200">
@@ -2389,15 +3229,34 @@ export default function AdminPage() {
 
               <div>
                 <label className="text-xs font-extrabold text-slate-800 uppercase tracking-wider block mb-1">
-                  Reset Password Baru (Kosongkan jika tidak diubah)
+                  {editUserFormData.role === "KARYAWAN"
+                    ? "Reset PIN Kasir Baru (Kosongkan jika tidak diubah)"
+                    : "Reset PIN / Password Admin (Kosongkan jika tidak diubah)"}
                 </label>
                 <input
-                  type="password"
-                  placeholder="Masukkan password baru..."
+                  type={editUserFormData.role === "KARYAWAN" ? "text" : "password"}
+                  maxLength={editUserFormData.role === "KARYAWAN" ? 8 : 32}
+                  placeholder={
+                    editUserFormData.role === "KARYAWAN"
+                      ? "Masukkan 4–6 digit PIN baru (contoh: 1234)..."
+                      : "Masukkan password baru..."
+                  }
                   value={editUserFormData.password}
-                  onChange={(e) => setEditUserFormData({ ...editUserFormData, password: e.target.value })}
-                  className="w-full px-3.5 py-2.5 text-sm font-bold text-slate-900 placeholder:text-slate-400 bg-white border-2 border-slate-300 rounded-xl focus:outline-none focus:border-blue-600"
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (editUserFormData.role === "KARYAWAN") {
+                      setEditUserFormData({ ...editUserFormData, password: val.replace(/\D/g, "") });
+                    } else {
+                      setEditUserFormData({ ...editUserFormData, password: val });
+                    }
+                  }}
+                  className="w-full px-3.5 py-2.5 text-sm font-bold text-slate-900 placeholder:text-slate-400 bg-white border-2 border-slate-300 rounded-xl focus:outline-none focus:border-blue-600 font-mono tracking-wider"
                 />
+                <p className="text-[11px] text-slate-500 mt-1 font-medium">
+                  {editUserFormData.role === "KARYAWAN"
+                    ? "Isi dengan angka baru jika ingin mengubah PIN kasir ini."
+                    : "Isi jika ingin mengubah sandi/PIN admin."}
+                </p>
               </div>
 
               <div className="pt-3 flex items-center justify-end gap-2 border-t border-slate-200">
@@ -2513,6 +3372,82 @@ export default function AdminPage() {
                 sellingPrice={selectedProductForBarcode.sellingPrice}
               />
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL 7: BATALKAN TRANSAKSI (VOID & AUTO-RESTOCK GUDANG)                  */}
+      {/* ========================================================================= */}
+      {voidingTx && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+          <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            <div className="bg-rose-600 text-white p-5 flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <AlertTriangle className="w-6 h-6 text-white" />
+                <div>
+                  <h3 className="font-black text-base">Batalkan Transaksi (VOID)</h3>
+                  <p className="text-xs text-rose-100 font-medium">{voidingTx.invoiceNumber}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setVoidingTx(null)}
+                className="text-rose-200 hover:text-white"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleVoidTransaction();
+              }}
+              className="p-6 space-y-4"
+            >
+              <div className="bg-rose-50 p-4 rounded-2xl border border-rose-200 space-y-2 text-xs">
+                <div className="flex justify-between items-center text-rose-950 font-bold">
+                  <span>Nominal Transaksi:</span>
+                  <span className="text-base font-black text-rose-700">Rp {voidingTx.totalAmount.toLocaleString("id-ID")}</span>
+                </div>
+                <p className="text-rose-800 leading-relaxed text-[11px]">
+                  ⚠️ <b>Peringatan:</b> Pembatalan ini akan otomatis mengembalikan seluruh stok barang pada transaksi ini ke gudang dan mengurangi omzet laporan.
+                </p>
+              </div>
+
+              <div>
+                <label className="text-xs font-black text-slate-800 uppercase tracking-wider block mb-1.5">
+                  Alasan Pembatalan Transaksi *
+                </label>
+                <textarea
+                  required
+                  rows={3}
+                  value={voidReasonInput}
+                  onChange={(e) => setVoidReasonInput(e.target.value)}
+                  placeholder="Contoh: Kasir salah input nominal / Salah pilih barang ATK / Pelanggan membatalkan pembelian"
+                  className="w-full px-3.5 py-2.5 text-xs text-slate-900 font-medium border border-slate-300 focus:border-rose-600 rounded-xl focus:outline-none"
+                  autoFocus
+                />
+              </div>
+
+              <div className="pt-2 flex items-center justify-end gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setVoidingTx(null)}
+                  className="px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-100 rounded-xl"
+                >
+                  Tutup
+                </button>
+                <button
+                  type="submit"
+                  disabled={isVoidSubmitting || !voidReasonInput.trim()}
+                  className="px-5 py-2.5 bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white text-xs font-black rounded-xl transition shadow-md shadow-rose-600/20"
+                >
+                  {isVoidSubmitting ? "Memproses Void..." : "Ya, Batalkan & Restok"}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

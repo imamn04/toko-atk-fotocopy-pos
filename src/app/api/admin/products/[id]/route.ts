@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { getSessionUser } from "@/lib/auth";
 
 // PATCH: Restock dan Update Produk
 export async function PATCH(
@@ -7,6 +8,11 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const user = await getSessionUser();
+    if (!user || user.role !== "ADMIN") {
+      return NextResponse.json({ success: false, message: "Akses ditolak" }, { status: 403 });
+    }
+
     const { id } = await params;
     const body = await req.json();
     const { name, categoryId, costPrice, sellingPrice, stock, stockToAdd, minStock, barcode, sku, isActive } = body;
@@ -47,6 +53,12 @@ export async function PATCH(
         ...(stock !== undefined && { stock: Number(stock) }),
         ...(minStock !== undefined && { minStock: Number(minStock) }),
         ...(isActive !== undefined && { isActive: Boolean(isActive) }),
+        ...(body.hasPack !== undefined && { hasPack: Boolean(body.hasPack) }),
+        ...(body.hasPack !== undefined && {
+          packName: body.hasPack && body.packName ? body.packName.trim() : null,
+          packQuantity: body.hasPack && body.packQuantity ? Number(body.packQuantity) : null,
+          packPrice: body.hasPack && body.packPrice ? Number(body.packPrice) : null,
+        }),
         ...(stockToAdd !== undefined && {
           stock: {
             increment: Number(stockToAdd),
@@ -76,6 +88,11 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const user = await getSessionUser();
+    if (!user || user.role !== "ADMIN") {
+      return NextResponse.json({ success: false, message: "Akses ditolak" }, { status: 403 });
+    }
+
     const { id } = await params;
 
     // Cek apakah produk memiliki riwayat transaksi
