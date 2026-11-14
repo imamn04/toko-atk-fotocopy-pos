@@ -79,6 +79,7 @@ interface Product {
   packName?: string | null;
   packQuantity?: number | null;
   packPrice?: number | null;
+  packBarcode?: string | null;
 }
 
 interface UserAccount {
@@ -206,9 +207,12 @@ export default function AdminPage() {
   const [startDate, setStartDate] = useState(() => {
     const d = new Date();
     d.setDate(d.getDate() - 6);
-    return d.toISOString().slice(0, 10);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   });
-  const [endDate, setEndDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [endDate, setEndDate] = useState(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  });
   const [paymentFilter, setPaymentFilter] = useState<"ALL" | "CASH" | "QRIS" | "TRANSFER">("ALL");
 
   // State Void / Pembatalan Transaksi
@@ -231,6 +235,7 @@ export default function AdminPage() {
     packName: "",
     packQuantity: 10,
     packPrice: 0,
+    packBarcode: "",
   });
 
   // Modal Edit Barang
@@ -248,7 +253,11 @@ export default function AdminPage() {
     packName: "",
     packQuantity: 10,
     packPrice: 0,
+    packBarcode: "",
   });
+
+  const [previewLabelUnit, setPreviewLabelUnit] = useState<"PCS" | "PACK">("PCS");
+  const [barcodeModalUnit, setBarcodeModalUnit] = useState<"PCS" | "PACK">("PCS");
 
   const [submitting, setSubmitting] = useState(false);
   const [alertMsg, setAlertMsg] = useState<{ text: string; type: "success" | "error" } | null>(null);
@@ -345,21 +354,23 @@ export default function AdminPage() {
 
   // Quick Preset Date Ranges
   const handleQuickPreset = (preset: "today" | "7days" | "30days" | "thisMonth") => {
+    const formatD = (d: Date) =>
+      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
     const today = new Date();
-    const endStr = today.toISOString().slice(0, 10);
+    const endStr = formatD(today);
     let startStr = endStr;
 
     if (preset === "7days") {
       const d = new Date();
       d.setDate(d.getDate() - 6);
-      startStr = d.toISOString().slice(0, 10);
+      startStr = formatD(d);
     } else if (preset === "30days") {
       const d = new Date();
       d.setDate(d.getDate() - 29);
-      startStr = d.toISOString().slice(0, 10);
+      startStr = formatD(d);
     } else if (preset === "thisMonth") {
       const d = new Date(today.getFullYear(), today.getMonth(), 1);
-      startStr = d.toISOString().slice(0, 10);
+      startStr = formatD(d);
     }
 
     setStartDate(startStr);
@@ -423,7 +434,13 @@ export default function AdminPage() {
       minStock: 5,
       barcode: autoBarcode,
       sku: "",
+      hasPack: false,
+      packName: "",
+      packQuantity: 10,
+      packPrice: 0,
+      packBarcode: autoBarcode + "P",
     });
+    setPreviewLabelUnit("PCS");
     setShowAddModal(true);
   };
 
@@ -477,6 +494,7 @@ export default function AdminPage() {
       packName: p.packName || "",
       packQuantity: p.packQuantity || 10,
       packPrice: p.packPrice || 0,
+      packBarcode: p.packBarcode || (p.barcode + "P"),
     });
   };
 
@@ -2774,7 +2792,7 @@ export default function AdminPage() {
                     <label className="flex items-center gap-2 cursor-pointer">
                       <input
                         type="checkbox"
-                        checked={formData.hasPack}
+                        checked={Boolean(formData.hasPack)}
                         onChange={(e) => setFormData({ ...formData, hasPack: e.target.checked })}
                         className="w-4 h-4 text-emerald-600 rounded"
                       />
@@ -2787,7 +2805,7 @@ export default function AdminPage() {
                     </span>
                   </div>
                   {formData.hasPack && (
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-2">
                       <div>
                         <label className="text-[11px] font-bold text-slate-600 block mb-1">Nama Satuan Pack</label>
                         <input
@@ -2799,7 +2817,7 @@ export default function AdminPage() {
                         />
                       </div>
                       <div>
-                        <label className="text-[11px] font-bold text-slate-600 block mb-1">Isi Barang (Pcs) per Pack</label>
+                        <label className="text-[11px] font-bold text-slate-600 block mb-1">Isi (Pcs) per Pack</label>
                         <input
                           type="number"
                           min={2}
@@ -2810,31 +2828,100 @@ export default function AdminPage() {
                         />
                       </div>
                       <div>
-                        <label className="text-[11px] font-bold text-slate-600 block mb-1">Harga Jual per Pack (Rp)</label>
+                        <label className="text-[11px] font-bold text-slate-600 block mb-1">Harga per Pack (Rp)</label>
                         <input
                           type="number"
                           min={0}
-                          placeholder="Contoh: 45000"
+                          placeholder="Contoh: 70000"
                           value={formData.packPrice || ""}
                           onChange={(e) => setFormData({ ...formData, packPrice: Number(e.target.value) || 0 })}
-                          className="w-full px-3 py-2 text-xs font-bold bg-white border border-slate-300 rounded-xl"
+                          className="w-full px-3 py-2 text-xs font-black text-emerald-700 bg-white border border-slate-300 rounded-xl"
                         />
+                      </div>
+                      <div>
+                        <label className="text-[11px] font-bold text-slate-600 block mb-1">
+                          Barcode Pack (Dus/Box)
+                        </label>
+                        <div className="flex gap-1.5">
+                          <input
+                            type="text"
+                            placeholder="Scan barcode dus/pack"
+                            value={formData.packBarcode || ""}
+                            onChange={(e) => setFormData({ ...formData, packBarcode: e.target.value })}
+                            className="w-full px-2.5 py-2 text-xs font-mono font-bold bg-white border border-slate-300 rounded-xl"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setFormData({ ...formData, packBarcode: (formData.barcode || "899") + "P" })}
+                            className="px-2 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-800 text-[10px] font-bold rounded-lg border border-emerald-300 shrink-0"
+                            title="Auto-generate Barcode Pack"
+                          >
+                            Auto
+                          </button>
+                        </div>
                       </div>
                     </div>
                   )}
                 </div>
               </div>
 
-              {/* Barcode Generator Terintegrasi */}
+              {/* Barcode Generator Terintegrasi & Toggle Satuan Label */}
               <div className="pt-2">
-                <label className="text-xs font-extrabold text-slate-800 uppercase tracking-wider block mb-2">
-                  Sistem Barcode & Cetak Label
-                </label>
+                <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+                  <label className="text-xs font-extrabold text-slate-800 uppercase tracking-wider block">
+                    Sistem Barcode & Cetak Label
+                  </label>
+                  {formData.hasPack && (
+                    <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl border border-slate-200">
+                      <button
+                        type="button"
+                        onClick={() => setPreviewLabelUnit("PCS")}
+                        className={`px-3 py-1 text-xs font-extrabold rounded-lg transition ${
+                          previewLabelUnit === "PCS"
+                            ? "bg-emerald-600 text-white shadow-xs"
+                            : "text-slate-600 hover:text-slate-900"
+                        }`}
+                      >
+                        🏷️ Label Eceran (Rp {(formData.sellingPrice || 0).toLocaleString("id-ID")})
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPreviewLabelUnit("PACK")}
+                        className={`px-3 py-1 text-xs font-extrabold rounded-lg transition ${
+                          previewLabelUnit === "PACK"
+                            ? "bg-amber-600 text-white shadow-xs"
+                            : "text-slate-600 hover:text-slate-900"
+                        }`}
+                      >
+                        📦 Label Grosir / Pack (Rp {(formData.packPrice || 0).toLocaleString("id-ID")})
+                      </button>
+                    </div>
+                  )}
+                </div>
+
                 <BarcodeGenerator
-                  barcode={formData.barcode}
-                  productName={formData.name || "Nama Barang Baru"}
-                  sellingPrice={formData.sellingPrice || 0}
-                  onGenerateRandom={(newCode) => setFormData((prev) => ({ ...prev, barcode: newCode }))}
+                  barcode={
+                    formData.hasPack && previewLabelUnit === "PACK"
+                      ? (formData.packBarcode || (formData.barcode + "P"))
+                      : formData.barcode
+                  }
+                  productName={
+                    formData.hasPack && previewLabelUnit === "PACK"
+                      ? `${formData.name || "Nama Barang"} (${formData.packName || "Pack"} isi ${formData.packQuantity || 10})`
+                      : (formData.name || "Nama Barang Baru")
+                  }
+                  sellingPrice={
+                    formData.hasPack && previewLabelUnit === "PACK"
+                      ? (formData.packPrice || 0)
+                      : (formData.sellingPrice || 0)
+                  }
+                  onGenerateRandom={(newCode) => {
+                    if (formData.hasPack && previewLabelUnit === "PACK") {
+                      setFormData((prev) => ({ ...prev, packBarcode: newCode }));
+                    } else {
+                      setFormData((prev) => ({ ...prev, barcode: newCode }));
+                    }
+                  }}
                 />
               </div>
 
@@ -2995,7 +3082,7 @@ export default function AdminPage() {
                     <label className="flex items-center gap-2 cursor-pointer">
                       <input
                         type="checkbox"
-                        checked={editFormData.hasPack}
+                        checked={Boolean(editFormData.hasPack)}
                         onChange={(e) => setEditFormData({ ...editFormData, hasPack: e.target.checked })}
                         className="w-4 h-4 text-amber-600 rounded"
                       />
@@ -3008,7 +3095,7 @@ export default function AdminPage() {
                     </span>
                   </div>
                   {editFormData.hasPack && (
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-2">
                       <div>
                         <label className="text-[11px] font-bold text-slate-600 block mb-1">Nama Satuan Pack</label>
                         <input
@@ -3020,7 +3107,7 @@ export default function AdminPage() {
                         />
                       </div>
                       <div>
-                        <label className="text-[11px] font-bold text-slate-600 block mb-1">Isi Barang (Pcs) per Pack</label>
+                        <label className="text-[11px] font-bold text-slate-600 block mb-1">Isi (Pcs) per Pack</label>
                         <input
                           type="number"
                           min={2}
@@ -3031,15 +3118,37 @@ export default function AdminPage() {
                         />
                       </div>
                       <div>
-                        <label className="text-[11px] font-bold text-slate-600 block mb-1">Harga Jual per Pack (Rp)</label>
+                        <label className="text-[11px] font-bold text-slate-600 block mb-1">Harga per Pack (Rp)</label>
                         <input
                           type="number"
                           min={0}
                           placeholder="Contoh: 45000"
                           value={editFormData.packPrice || ""}
                           onChange={(e) => setEditFormData({ ...editFormData, packPrice: Number(e.target.value) || 0 })}
-                          className="w-full px-3 py-2 text-xs font-bold bg-white border border-slate-300 rounded-xl"
+                          className="w-full px-3 py-2 text-xs font-black text-amber-700 bg-white border border-slate-300 rounded-xl"
                         />
+                      </div>
+                      <div>
+                        <label className="text-[11px] font-bold text-slate-600 block mb-1">
+                          Barcode Pack (Dus/Box)
+                        </label>
+                        <div className="flex gap-1.5">
+                          <input
+                            type="text"
+                            placeholder="Scan barcode dus/pack"
+                            value={editFormData.packBarcode || ""}
+                            onChange={(e) => setEditFormData({ ...editFormData, packBarcode: e.target.value })}
+                            className="w-full px-2.5 py-2 text-xs font-mono font-bold bg-white border border-slate-300 rounded-xl"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setEditFormData({ ...editFormData, packBarcode: (editFormData.barcode || "899") + "P" })}
+                            className="px-2 py-1 bg-amber-100 hover:bg-amber-200 text-amber-800 text-[10px] font-bold rounded-lg border border-amber-300 shrink-0"
+                            title="Auto-generate Barcode Pack"
+                          >
+                            Auto
+                          </button>
+                        </div>
                       </div>
                     </div>
                   )}
@@ -3365,11 +3474,49 @@ export default function AdminPage() {
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <div className="p-4">
+            <div className="p-4 space-y-3">
+              {selectedProductForBarcode.hasPack && (
+                <div className="flex items-center justify-center gap-1.5 bg-slate-100 p-1 rounded-xl border border-slate-200">
+                  <button
+                    type="button"
+                    onClick={() => setBarcodeModalUnit("PCS")}
+                    className={`flex-1 py-1 text-xs font-extrabold rounded-lg transition text-center ${
+                      barcodeModalUnit === "PCS"
+                        ? "bg-emerald-600 text-white shadow-xs"
+                        : "text-slate-600 hover:text-slate-900"
+                    }`}
+                  >
+                    🏷️ Eceran (Rp {selectedProductForBarcode.sellingPrice.toLocaleString("id-ID")})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setBarcodeModalUnit("PACK")}
+                    className={`flex-1 py-1 text-xs font-extrabold rounded-lg transition text-center ${
+                      barcodeModalUnit === "PACK"
+                        ? "bg-amber-600 text-white shadow-xs"
+                        : "text-slate-600 hover:text-slate-900"
+                    }`}
+                  >
+                    📦 Grosir / Pack (Rp {(selectedProductForBarcode.packPrice || 0).toLocaleString("id-ID")})
+                  </button>
+                </div>
+              )}
               <BarcodeGenerator
-                barcode={selectedProductForBarcode.barcode}
-                productName={selectedProductForBarcode.name}
-                sellingPrice={selectedProductForBarcode.sellingPrice}
+                barcode={
+                  selectedProductForBarcode.hasPack && barcodeModalUnit === "PACK"
+                    ? (selectedProductForBarcode.packBarcode || (selectedProductForBarcode.barcode + "P"))
+                    : selectedProductForBarcode.barcode
+                }
+                productName={
+                  selectedProductForBarcode.hasPack && barcodeModalUnit === "PACK"
+                    ? `${selectedProductForBarcode.name} (${selectedProductForBarcode.packName || "Pack"} isi ${selectedProductForBarcode.packQuantity || 10})`
+                    : selectedProductForBarcode.name
+                }
+                sellingPrice={
+                  selectedProductForBarcode.hasPack && barcodeModalUnit === "PACK"
+                    ? (selectedProductForBarcode.packPrice || 0)
+                    : selectedProductForBarcode.sellingPrice
+                }
               />
             </div>
           </div>

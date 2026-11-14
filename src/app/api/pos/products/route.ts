@@ -26,6 +26,7 @@ export async function GET(req: Request) {
       packName: true,
       packQuantity: true,
       packPrice: true,
+      packBarcode: true,
       category: {
         select: {
           name: true,
@@ -92,7 +93,27 @@ export async function GET(req: Request) {
     }
 
     // 1. Cek exact match barcode terlebih dahulu (paling sering dari USB barcode scanner)
-    // Cek di produk reguler
+    // 1a. Cek di barcode kemasan grosir (PACK)
+    const exactPackBarcode = await prisma.product.findFirst({
+      where: {
+        packBarcode: query,
+        hasPack: true,
+        isActive: true,
+      },
+      select: productSelect,
+    });
+
+    if (exactPackBarcode) {
+      return NextResponse.json({
+        success: true,
+        exactMatch: true,
+        matchedUnit: "PACK",
+        products: [{ ...exactPackBarcode, matchedUnit: "PACK" }],
+        categories,
+      });
+    }
+
+    // 1b. Cek di barcode satuan eceran reguler (PCS)
     const exactBarcode = await prisma.product.findFirst({
       where: {
         barcode: query,
@@ -105,7 +126,8 @@ export async function GET(req: Request) {
       return NextResponse.json({
         success: true,
         exactMatch: true,
-        products: [exactBarcode],
+        matchedUnit: "PCS",
+        products: [{ ...exactBarcode, matchedUnit: "PCS" }],
         categories,
       });
     }

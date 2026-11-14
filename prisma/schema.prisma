@@ -56,12 +56,14 @@ model Product {
   packName         String?           // e.g. "Pack", "Lusin", "Rim", "Box"
   packQuantity     Int?              // Isi berapa pcs per pack (e.g. 10)
   packPrice        Float?            // Harga jual khusus per pack (e.g. Rp 37.000)
+  packBarcode      String?           // Barcode khusus kemasan pack / dus / box
   createdAt        DateTime          @default(now())
   updatedAt        DateTime          @updatedAt
   transactionItems TransactionItem[]
   bundleItems      BundleItem[]
 
   @@index([barcode])
+  @@index([packBarcode])
   @@index([name])
 }
 

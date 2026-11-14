@@ -706,7 +706,9 @@ export default function PosPage() {
 
       if (data.success && data.products && data.products.length > 0) {
         if (data.exactMatch || data.products.length === 1) {
-          addToCart(data.products[0], 1);
+          const item = data.products[0];
+          const unit = item.matchedUnit || (data.matchedUnit === "PACK" ? "PACK" : "PCS");
+          addToCart(item, 1, unit);
           setBarcodeInput("");
         } else {
           setProducts(data.products);

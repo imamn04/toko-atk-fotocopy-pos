@@ -57,6 +57,7 @@ export async function POST(req: Request) {
       packName,
       packQuantity,
       packPrice,
+      packBarcode,
     } = body;
 
     if (!name || !categoryId || costPrice === undefined || sellingPrice === undefined) {
@@ -90,6 +91,17 @@ export async function POST(req: Request) {
       );
     }
 
+    // Penanganan Barcode Grosir (Pack Barcode)
+    let finalPackBarcode: string | null = null;
+    if (Boolean(hasPack)) {
+      if (packBarcode && packBarcode.trim()) {
+        finalPackBarcode = packBarcode.trim();
+      } else {
+        // Auto-generate barcode pack turunan dari barcode satuan
+        finalPackBarcode = finalBarcode + "P";
+      }
+    }
+
     const newProduct = await prisma.product.create({
       data: {
         name: name.trim(),
@@ -105,6 +117,7 @@ export async function POST(req: Request) {
         packName: hasPack && packName ? packName.trim() : null,
         packQuantity: hasPack && packQuantity ? Number(packQuantity) : null,
         packPrice: hasPack && packPrice ? Number(packPrice) : null,
+        packBarcode: finalPackBarcode,
       },
       include: {
         category: true,

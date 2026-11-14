@@ -58,6 +58,7 @@ export async function PATCH(
           packName: body.hasPack && body.packName ? body.packName.trim() : null,
           packQuantity: body.hasPack && body.packQuantity ? Number(body.packQuantity) : null,
           packPrice: body.hasPack && body.packPrice ? Number(body.packPrice) : null,
+          packBarcode: body.hasPack && body.packBarcode ? body.packBarcode.trim() : (body.hasPack ? (barcode?.trim() || existingProduct.barcode) + "P" : null),
         }),
         ...(stockToAdd !== undefined && {
           stock: {
