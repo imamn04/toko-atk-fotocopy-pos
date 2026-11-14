@@ -22,6 +22,7 @@ RUN npx prisma generate
 
 # Build Next.js standalone dengan batasan memori agar VPS hemat RAM & tidak crash
 ENV NEXT_TELEMETRY_DISABLED=1
+ENV NEXT_OUTPUT_STANDALONE=1
 ENV NODE_OPTIONS="--max-old-space-size=768"
 RUN npm run build
 
