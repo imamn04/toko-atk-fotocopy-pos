@@ -15,7 +15,7 @@ export async function GET(req: Request) {
     const yearParam = searchParams.get("year");   // e.g. "2026"
     const category = searchParams.get("category");
 
-    let whereClause: Record<string, unknown> = {};
+    const whereClause: Record<string, unknown> = {};
 
     let targetYear: number | null = null;
     let targetMonth: number | null = null;
@@ -68,9 +68,19 @@ export async function GET(req: Request) {
       categorySummary[e.category] = (categorySummary[e.category] || 0) + e.amount;
     }
 
+    const currentMonthLabel = monthParam || (targetYear && targetMonth ? `${targetYear}-${String(targetMonth).padStart(2, "0")}` : "");
+
     return NextResponse.json({
       success: true,
-      data: expenses,
+      data: {
+        expenses,
+        summary: {
+          month: currentMonthLabel,
+          totalExpenses: totalAmount,
+          byCategory: categorySummary,
+        },
+      },
+      expenses,
       totalAmount,
       categorySummary,
     });

@@ -21,8 +21,22 @@ export async function GET(req: Request) {
     defaultStart.setDate(defaultStart.getDate() - 6);
     defaultStart.setHours(0, 0, 0, 0);
 
-    const filterStart = startDateParam ? new Date(startDateParam + "T00:00:00.000Z") : defaultStart;
-    const filterEnd = endDateParam ? new Date(endDateParam + "T23:59:59.999Z") : now;
+    let filterStart: Date = defaultStart;
+    let filterEnd: Date = now;
+
+    if (startDateParam && /^\d{4}-\d{2}-\d{2}$/.test(startDateParam)) {
+      const [sY, sM, sD] = startDateParam.split("-").map(Number);
+      filterStart = new Date(sY, sM - 1, sD, 0, 0, 0, 0);
+    } else if (startDateParam) {
+      filterStart = new Date(startDateParam);
+    }
+
+    if (endDateParam && /^\d{4}-\d{2}-\d{2}$/.test(endDateParam)) {
+      const [eY, eM, eD] = endDateParam.split("-").map(Number);
+      filterEnd = new Date(eY, eM - 1, eD, 23, 59, 59, 999);
+    } else if (endDateParam) {
+      filterEnd = new Date(endDateParam);
+    }
 
     // 1. Ambil transaksi sesuai filter rentang tanggal
     const transactions = await prisma.transaction.findMany({

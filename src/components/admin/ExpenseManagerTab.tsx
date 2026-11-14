@@ -79,8 +79,22 @@ export default function ExpenseManagerTab() {
       const res = await fetch(url);
       const json = await res.json();
       if (json.success) {
-        setExpenses(json.data.expenses || []);
-        setSummary(json.data.summary || { month: selectedMonth, totalExpenses: 0, byCategory: {} });
+        const rawList = Array.isArray(json.data)
+          ? json.data
+          : (json.data?.expenses || json.expenses || []);
+
+        const total = typeof json.totalAmount === "number"
+          ? json.totalAmount
+          : (json.data?.summary?.totalExpenses ?? rawList.reduce((acc: number, item: ExpenseItem) => acc + (item.amount || 0), 0));
+
+        const byCat = json.categorySummary || json.data?.summary?.byCategory || {};
+
+        setExpenses(rawList);
+        setSummary({
+          month: selectedMonth,
+          totalExpenses: total,
+          byCategory: byCat,
+        });
       }
     } catch {
       setToast({ type: "error", text: "Gagal memuat daftar pengeluaran." });
@@ -153,8 +167,8 @@ export default function ExpenseManagerTab() {
     }
   };
 
-  const kulakanTotal = summary.byCategory["KULAKAN_STOK"] || 0;
-  const operasionalTotal = summary.totalExpenses - kulakanTotal;
+  const kulakanTotal = (summary?.byCategory && summary.byCategory["KULAKAN_STOK"]) || 0;
+  const operasionalTotal = (summary?.totalExpenses || 0) - kulakanTotal;
 
   return (
     <div className="space-y-6">
