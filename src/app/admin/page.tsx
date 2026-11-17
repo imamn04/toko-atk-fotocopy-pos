@@ -75,6 +75,7 @@ interface Product {
     id: string;
     name: string;
   };
+  unitMode?: "PCS_ONLY" | "PACK_ONLY" | "BOTH";
   hasPack?: boolean;
   packName?: string | null;
   packQuantity?: number | null;
@@ -231,6 +232,7 @@ export default function AdminPage() {
     minStock: 5,
     barcode: "",
     sku: "",
+    unitMode: "PCS_ONLY" as "PCS_ONLY" | "PACK_ONLY" | "BOTH",
     hasPack: false,
     packName: "",
     packQuantity: 10,
@@ -249,6 +251,7 @@ export default function AdminPage() {
     minStock: 5,
     barcode: "",
     sku: "",
+    unitMode: "PCS_ONLY" as "PCS_ONLY" | "PACK_ONLY" | "BOTH",
     hasPack: false,
     packName: "",
     packQuantity: 10,
@@ -434,6 +437,7 @@ export default function AdminPage() {
       minStock: 5,
       barcode: autoBarcode,
       sku: "",
+      unitMode: "PCS_ONLY",
       hasPack: false,
       packName: "",
       packQuantity: 10,
@@ -481,6 +485,13 @@ export default function AdminPage() {
   // Buka Modal Edit Produk
   const handleOpenEditProduct = (p: Product) => {
     setEditingProduct(p);
+    const effectiveUnitMode: "PCS_ONLY" | "PACK_ONLY" | "BOTH" =
+      p.unitMode === "PACK_ONLY" || p.unitMode === "BOTH" || p.unitMode === "PCS_ONLY"
+        ? p.unitMode
+        : p.hasPack
+        ? (p.packQuantity === 1 ? "PACK_ONLY" : "BOTH")
+        : "PCS_ONLY";
+
     setEditFormData({
       name: p.name,
       categoryId: p.categoryId,
@@ -490,10 +501,11 @@ export default function AdminPage() {
       minStock: p.minStock,
       barcode: p.barcode,
       sku: p.sku,
-      hasPack: !!p.hasPack,
+      unitMode: effectiveUnitMode,
+      hasPack: effectiveUnitMode === "PACK_ONLY" || effectiveUnitMode === "BOTH",
       packName: p.packName || "",
-      packQuantity: p.packQuantity || 10,
-      packPrice: p.packPrice || 0,
+      packQuantity: p.packQuantity || (effectiveUnitMode === "PACK_ONLY" ? 1 : 10),
+      packPrice: p.packPrice || (effectiveUnitMode === "PACK_ONLY" ? p.sellingPrice : 0),
       packBarcode: p.packBarcode || (p.barcode + "P"),
     });
   };
@@ -1183,11 +1195,19 @@ export default function AdminPage() {
                           <tr key={p.id} className="hover:bg-slate-50 transition">
                             <td className="py-3 px-4 whitespace-nowrap">
                               <div className="font-bold text-slate-900 text-sm">{p.name}</div>
-                              <div className="flex items-center gap-2 mt-0.5">
+                              <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                                 <span className="text-[11px] text-slate-500 font-mono font-semibold">SKU: {p.sku}</span>
-                                {p.hasPack && p.packPrice && (
-                                  <span className="text-[10px] font-extrabold bg-blue-50 text-blue-700 px-2 py-0.5 rounded border border-blue-200">
-                                    {p.packName || "Pack"} @{p.packQuantity}pcs: Rp {p.packPrice.toLocaleString("id-ID")}
+                                {p.unitMode === "PACK_ONLY" ? (
+                                  <span className="text-[10px] font-black bg-amber-50 text-amber-800 px-2 py-0.5 rounded border border-amber-200">
+                                    📦 Khusus {p.packName || "Pack"}
+                                  </span>
+                                ) : p.unitMode === "BOTH" || (p.hasPack && p.packPrice) ? (
+                                  <span className="text-[10px] font-black bg-blue-50 text-blue-700 px-2 py-0.5 rounded border border-blue-200">
+                                    🔄 Ecer &amp; {p.packName || "Pack"} (@{p.packQuantity}pcs): Rp {(p.packPrice || 0).toLocaleString("id-ID")}
+                                  </span>
+                                ) : (
+                                  <span className="text-[10px] font-semibold bg-slate-100 text-slate-600 px-2 py-0.5 rounded border border-slate-200">
+                                    🏷️ Eceran (Pcs)
                                   </span>
                                 )}
                               </div>
@@ -1200,7 +1220,10 @@ export default function AdminPage() {
                             <td className="py-3 px-4 whitespace-nowrap">
                               <button
                                 type="button"
-                                onClick={() => setSelectedProductForBarcode(p)}
+                                onClick={() => {
+                                  setSelectedProductForBarcode(p);
+                                  setBarcodeModalUnit(p.unitMode === "PACK_ONLY" ? "PACK" : "PCS");
+                                }}
                                 className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-100 hover:bg-blue-50 text-slate-800 hover:text-blue-700 transition border border-slate-300 font-mono font-bold text-xs group shadow-2xs"
                                 title="Klik untuk lihat gambar barcode & unduh PNG / cetak stiker"
                               >
@@ -1225,7 +1248,7 @@ export default function AdminPage() {
                                     : "bg-emerald-100 text-emerald-950 border-emerald-300"
                                 }`}
                               >
-                                {p.stock} pcs
+                                {p.unitMode === "PACK_ONLY" ? `${p.stock} ${p.packName || "pack"}` : `${p.stock} pcs`}
                               </span>
                             </td>
                             <td className="py-3 px-4 text-center whitespace-nowrap">
@@ -1258,7 +1281,10 @@ export default function AdminPage() {
                                 {/* Tombol Cetak Barcode */}
                                 <button
                                   type="button"
-                                  onClick={() => setSelectedProductForBarcode(p)}
+                                  onClick={() => {
+                                    setSelectedProductForBarcode(p);
+                                    setBarcodeModalUnit(p.unitMode === "PACK_ONLY" ? "PACK" : "PCS");
+                                  }}
                                   className="p-1.5 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-lg transition inline-flex items-center gap-1 font-bold border border-blue-200"
                                   title="Preview & Cetak Barcode Stiker"
                                 >
@@ -2726,120 +2752,283 @@ export default function AdminPage() {
                 </div>
 
 
-                {/* Harga Beli Modal (HPP) */}
-                <div>
-                  <label className="text-xs font-extrabold text-slate-800 uppercase tracking-wider block mb-1">
-                    Harga Modal / Beli (HPP) *
+                {/* 3 PILIHAN MODEL SATUAN PENJUALAN */}
+                <div className="md:col-span-2">
+                  <label className="text-xs font-black text-slate-800 uppercase tracking-wider block mb-2">
+                    Model Satuan Penjualan Barang *
                   </label>
-                  <input
-                    type="number"
-                    min={0}
-                    required
-                    value={formData.costPrice || ""}
-                    onChange={(e) => setFormData({ ...formData, costPrice: Number(e.target.value) || 0 })}
-                    placeholder="Contoh: 3500"
-                    className="w-full px-3.5 py-2.5 text-sm font-extrabold text-slate-900 placeholder:text-slate-400 bg-white border-2 border-slate-300 rounded-xl focus:outline-none focus:border-emerald-600"
-                  />
-                </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                    {/* Mode 1: Hanya Eceran */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFormData({
+                          ...formData,
+                          unitMode: "PCS_ONLY",
+                          hasPack: false,
+                        });
+                        setPreviewLabelUnit("PCS");
+                      }}
+                      className={`p-3 rounded-2xl border-2 text-left transition relative cursor-pointer ${
+                        formData.unitMode === "PCS_ONLY"
+                          ? "border-emerald-600 bg-emerald-50/70 shadow-sm ring-1 ring-emerald-500"
+                          : "border-slate-200 bg-white hover:border-slate-300"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-base">🏷️</span>
+                        <span className="text-xs font-black text-slate-900">Hanya Eceran (Pcs)</span>
+                      </div>
+                      <p className="text-[10px] text-slate-500 leading-tight">
+                        Dijual satuan per biji (Gunting, Penggaris, Buku, dll)
+                      </p>
+                    </button>
 
-                {/* Harga Jual */}
-                <div>
-                  <label className="text-xs font-extrabold text-slate-800 uppercase tracking-wider block mb-1">
-                    Harga Jual Pelanggan *
-                  </label>
-                  <input
-                    type="number"
-                    min={0}
-                    required
-                    value={formData.sellingPrice || ""}
-                    onChange={(e) => setFormData({ ...formData, sellingPrice: Number(e.target.value) || 0 })}
-                    placeholder="Contoh: 5000"
-                    className="w-full px-3.5 py-2.5 text-sm font-extrabold text-slate-900 placeholder:text-slate-400 bg-white border-2 border-slate-300 rounded-xl focus:outline-none focus:border-emerald-600"
-                  />
-                </div>
+                    {/* Mode 2: Hanya Grosir */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const pName = formData.packName || "Pack";
+                        setFormData({
+                          ...formData,
+                          unitMode: "PACK_ONLY",
+                          hasPack: true,
+                          packQuantity: 1,
+                          packName: pName,
+                          packPrice: formData.sellingPrice,
+                          packBarcode: formData.barcode,
+                        });
+                        setPreviewLabelUnit("PACK");
+                      }}
+                      className={`p-3 rounded-2xl border-2 text-left transition relative cursor-pointer ${
+                        formData.unitMode === "PACK_ONLY"
+                          ? "border-blue-600 bg-blue-50/70 shadow-sm ring-1 ring-blue-500"
+                          : "border-slate-200 bg-white hover:border-slate-300"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-base">📦</span>
+                        <span className="text-xs font-black text-slate-900">Hanya Grosir (Pack/Rim)</span>
+                      </div>
+                      <p className="text-[10px] text-slate-500 leading-tight">
+                        Dijual utuh per dus/rim/pack (Kertas HVS, Paperclip Box)
+                      </p>
+                    </button>
 
-                {/* Stok Awal */}
-                <div>
-                  <label className="text-xs font-extrabold text-slate-800 uppercase tracking-wider block mb-1">
-                    Stok Awal
-                  </label>
-                  <input
-                    type="number"
-                    min={0}
-                    value={formData.stock}
-                    onChange={(e) => setFormData({ ...formData, stock: Number(e.target.value) || 0 })}
-                    className="w-full px-3.5 py-2.5 text-sm font-extrabold text-slate-900 bg-white border-2 border-slate-300 rounded-xl focus:outline-none focus:border-emerald-600"
-                  />
-                </div>
-
-                {/* Minimal Stok Alert */}
-                <div>
-                  <label className="text-xs font-extrabold text-slate-800 uppercase tracking-wider block mb-1">
-                    Batas Alert Stok Menipis
-                  </label>
-                  <input
-                    type="number"
-                    min={1}
-                    value={formData.minStock}
-                    onChange={(e) => setFormData({ ...formData, minStock: Number(e.target.value) || 1 })}
-                    className="w-full px-3.5 py-2.5 text-sm font-extrabold text-slate-900 bg-white border-2 border-slate-300 rounded-xl focus:outline-none focus:border-emerald-600"
-                  />
-                </div>
-
-                {/* Multi-Satuan (Harga Pack / Lusin / Rim) */}
-                <div className="md:col-span-2 bg-slate-50 border border-slate-200 rounded-2xl p-4">
-                  <div className="flex items-center justify-between mb-2">
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={Boolean(formData.hasPack)}
-                        onChange={(e) => setFormData({ ...formData, hasPack: e.target.checked })}
-                        className="w-4 h-4 text-emerald-600 rounded"
-                      />
-                      <span className="text-xs font-black text-slate-800 uppercase tracking-wider">
-                        Aktifkan Harga Grosir / Per Pack (Multi-Satuan)
-                      </span>
-                    </label>
-                    <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full">
-                      Pcs vs Pack
-                    </span>
+                    {/* Mode 3: Keduanya */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFormData({
+                          ...formData,
+                          unitMode: "BOTH",
+                          hasPack: true,
+                          packQuantity: formData.packQuantity && formData.packQuantity > 1 ? formData.packQuantity : 10,
+                          packName: formData.packName || "Pack",
+                          packPrice: formData.packPrice || (formData.sellingPrice * 10),
+                          packBarcode: formData.packBarcode || (formData.barcode + "P"),
+                        });
+                        setPreviewLabelUnit("PCS");
+                      }}
+                      className={`p-3 rounded-2xl border-2 text-left transition relative cursor-pointer ${
+                        formData.unitMode === "BOTH"
+                          ? "border-purple-600 bg-purple-50/70 shadow-sm ring-1 ring-purple-500"
+                          : "border-slate-200 bg-white hover:border-slate-300"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-base">🔄</span>
+                        <span className="text-xs font-black text-slate-900">Keduanya (Pcs &amp; Pack)</span>
+                      </div>
+                      <p className="text-[10px] text-slate-500 leading-tight">
+                        Bisa eceran &amp; ada diskon grosir per kemasan pack (Pulpen, Tipex)
+                      </p>
+                    </button>
                   </div>
-                  {formData.hasPack && (
+                </div>
+
+                {/* INPUT FIELD DINAMIS SESUAI MODE */}
+                {formData.unitMode === "PACK_ONLY" ? (
+                  <>
+                    <div>
+                      <label className="text-xs font-extrabold text-slate-800 uppercase tracking-wider block mb-1">
+                        Nama Satuan Kemasan Grosir *
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={formData.packName || ""}
+                        onChange={(e) => setFormData({ ...formData, packName: e.target.value })}
+                        placeholder="Contoh: Pack, Rim, Box, Lusin, Dus"
+                        className="w-full px-3.5 py-2.5 text-sm font-bold text-slate-900 bg-white border-2 border-slate-300 rounded-xl focus:outline-none focus:border-blue-600"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-extrabold text-slate-800 uppercase tracking-wider block mb-1">
+                        Harga Modal / Beli per {formData.packName || "Pack"} (HPP) *
+                      </label>
+                      <input
+                        type="number"
+                        min={0}
+                        required
+                        value={formData.costPrice || ""}
+                        onChange={(e) => setFormData({ ...formData, costPrice: Number(e.target.value) || 0 })}
+                        placeholder="Contoh: 45000"
+                        className="w-full px-3.5 py-2.5 text-sm font-extrabold text-slate-900 bg-white border-2 border-slate-300 rounded-xl focus:outline-none focus:border-blue-600"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-extrabold text-slate-800 uppercase tracking-wider block mb-1">
+                        Harga Jual Pelanggan per {formData.packName || "Pack"} *
+                      </label>
+                      <input
+                        type="number"
+                        min={0}
+                        required
+                        value={formData.sellingPrice || ""}
+                        onChange={(e) => {
+                          const val = Number(e.target.value) || 0;
+                          setFormData({ ...formData, sellingPrice: val, packPrice: val });
+                        }}
+                        placeholder="Contoh: 55000"
+                        className="w-full px-3.5 py-2.5 text-sm font-extrabold text-slate-900 bg-white border-2 border-slate-300 rounded-xl focus:outline-none focus:border-blue-600"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-extrabold text-slate-800 uppercase tracking-wider block mb-1">
+                        Stok Awal (Jumlah {formData.packName || "Pack"})
+                      </label>
+                      <input
+                        type="number"
+                        min={0}
+                        value={formData.stock}
+                        onChange={(e) => setFormData({ ...formData, stock: Number(e.target.value) || 0 })}
+                        className="w-full px-3.5 py-2.5 text-sm font-extrabold text-slate-900 bg-white border-2 border-slate-300 rounded-xl focus:outline-none focus:border-blue-600"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-extrabold text-slate-800 uppercase tracking-wider block mb-1">
+                        Batas Alert Stok Menipis ({formData.packName || "Pack"})
+                      </label>
+                      <input
+                        type="number"
+                        min={1}
+                        value={formData.minStock}
+                        onChange={(e) => setFormData({ ...formData, minStock: Number(e.target.value) || 1 })}
+                        className="w-full px-3.5 py-2.5 text-sm font-extrabold text-slate-900 bg-white border-2 border-slate-300 rounded-xl focus:outline-none focus:border-blue-600"
+                      />
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div>
+                      <label className="text-xs font-extrabold text-slate-800 uppercase tracking-wider block mb-1">
+                        Harga Modal / Beli (HPP) per Pcs *
+                      </label>
+                      <input
+                        type="number"
+                        min={0}
+                        required
+                        value={formData.costPrice || ""}
+                        onChange={(e) => setFormData({ ...formData, costPrice: Number(e.target.value) || 0 })}
+                        placeholder="Contoh: 3500"
+                        className="w-full px-3.5 py-2.5 text-sm font-extrabold text-slate-900 placeholder:text-slate-400 bg-white border-2 border-slate-300 rounded-xl focus:outline-none focus:border-emerald-600"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-extrabold text-slate-800 uppercase tracking-wider block mb-1">
+                        Harga Jual Eceran Pelanggan (Rp/Pcs) *
+                      </label>
+                      <input
+                        type="number"
+                        min={0}
+                        required
+                        value={formData.sellingPrice || ""}
+                        onChange={(e) => setFormData({ ...formData, sellingPrice: Number(e.target.value) || 0 })}
+                        placeholder="Contoh: 5000"
+                        className="w-full px-3.5 py-2.5 text-sm font-extrabold text-slate-900 placeholder:text-slate-400 bg-white border-2 border-slate-300 rounded-xl focus:outline-none focus:border-emerald-600"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-extrabold text-slate-800 uppercase tracking-wider block mb-1">
+                        {formData.unitMode === "BOTH" ? "Total Stok Fisik Gudang (Pcs)" : "Stok Awal (Pcs)"}
+                      </label>
+                      <input
+                        type="number"
+                        min={0}
+                        value={formData.stock}
+                        onChange={(e) => setFormData({ ...formData, stock: Number(e.target.value) || 0 })}
+                        className="w-full px-3.5 py-2.5 text-sm font-extrabold text-slate-900 bg-white border-2 border-slate-300 rounded-xl focus:outline-none focus:border-emerald-600"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-extrabold text-slate-800 uppercase tracking-wider block mb-1">
+                        Batas Alert Stok Menipis (Pcs)
+                      </label>
+                      <input
+                        type="number"
+                        min={1}
+                        value={formData.minStock}
+                        onChange={(e) => setFormData({ ...formData, minStock: Number(e.target.value) || 1 })}
+                        className="w-full px-3.5 py-2.5 text-sm font-extrabold text-slate-900 bg-white border-2 border-slate-300 rounded-xl focus:outline-none focus:border-emerald-600"
+                      />
+                    </div>
+                  </>
+                )}
+
+                {/* Multi-Satuan Detail Box Khusus Mode "BOTH" */}
+                {formData.unitMode === "BOTH" && (
+                  <div className="md:col-span-2 bg-gradient-to-r from-purple-50/70 to-blue-50/70 border border-purple-200 rounded-2xl p-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-xs font-black text-purple-950 uppercase tracking-wider flex items-center gap-1.5">
+                        <span>📦</span> Informasi Kemasan Grosir / Pack
+                      </span>
+                      <span className="text-[10px] bg-purple-100 text-purple-800 font-extrabold px-2 py-0.5 rounded-full">
+                        Multi-Satuan Aktif
+                      </span>
+                    </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-2">
                       <div>
-                        <label className="text-[11px] font-bold text-slate-600 block mb-1">Nama Satuan Pack</label>
+                        <label className="text-[11px] font-bold text-slate-700 block mb-1">Nama Satuan Pack *</label>
                         <input
                           type="text"
-                          placeholder="Contoh: Pack, Lusin, Rim"
+                          placeholder="Contoh: Pack, Lusin, Box"
                           value={formData.packName || ""}
                           onChange={(e) => setFormData({ ...formData, packName: e.target.value })}
-                          className="w-full px-3 py-2 text-xs font-bold bg-white border border-slate-300 rounded-xl"
+                          className="w-full px-3 py-2 text-xs font-bold bg-white border border-slate-300 rounded-xl focus:border-purple-600"
                         />
                       </div>
                       <div>
-                        <label className="text-[11px] font-bold text-slate-600 block mb-1">Isi (Pcs) per Pack</label>
+                        <label className="text-[11px] font-bold text-slate-700 block mb-1">Isi (Pcs) per Pack *</label>
                         <input
                           type="number"
                           min={2}
                           placeholder="Contoh: 10 atau 12"
                           value={formData.packQuantity || ""}
                           onChange={(e) => setFormData({ ...formData, packQuantity: Number(e.target.value) || 0 })}
-                          className="w-full px-3 py-2 text-xs font-bold bg-white border border-slate-300 rounded-xl"
+                          className="w-full px-3 py-2 text-xs font-bold bg-white border border-slate-300 rounded-xl focus:border-purple-600"
                         />
                       </div>
                       <div>
-                        <label className="text-[11px] font-bold text-slate-600 block mb-1">Harga per Pack (Rp)</label>
+                        <label className="text-[11px] font-bold text-slate-700 block mb-1">Harga per Pack (Rp) *</label>
                         <input
                           type="number"
                           min={0}
                           placeholder="Contoh: 70000"
                           value={formData.packPrice || ""}
                           onChange={(e) => setFormData({ ...formData, packPrice: Number(e.target.value) || 0 })}
-                          className="w-full px-3 py-2 text-xs font-black text-emerald-700 bg-white border border-slate-300 rounded-xl"
+                          className="w-full px-3 py-2 text-xs font-black text-purple-800 bg-white border border-slate-300 rounded-xl focus:border-purple-600"
                         />
                       </div>
                       <div>
-                        <label className="text-[11px] font-bold text-slate-600 block mb-1">
+                        <label className="text-[11px] font-bold text-slate-700 block mb-1">
                           Barcode Pack (Dus/Box)
                         </label>
                         <div className="flex gap-1.5">
@@ -2853,7 +3042,7 @@ export default function AdminPage() {
                           <button
                             type="button"
                             onClick={() => setFormData({ ...formData, packBarcode: (formData.barcode || "899") + "P" })}
-                            className="px-2 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-800 text-[10px] font-bold rounded-lg border border-emerald-300 shrink-0"
+                            className="px-2 py-1 bg-purple-100 hover:bg-purple-200 text-purple-800 text-[10px] font-bold rounded-lg border border-purple-300 shrink-0"
                             title="Auto-generate Barcode Pack"
                           >
                             Auto
@@ -2861,17 +3050,17 @@ export default function AdminPage() {
                         </div>
                       </div>
                     </div>
-                  )}
-                </div>
+                  </div>
+                )}
               </div>
 
               {/* Barcode Generator Terintegrasi & Toggle Satuan Label */}
               <div className="pt-2">
                 <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
                   <label className="text-xs font-extrabold text-slate-800 uppercase tracking-wider block">
-                    Sistem Barcode & Cetak Label
+                    Sistem Barcode &amp; Cetak Label
                   </label>
-                  {formData.hasPack && (
+                  {formData.unitMode === "BOTH" && (
                     <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl border border-slate-200">
                       <button
                         type="button"
@@ -2889,7 +3078,7 @@ export default function AdminPage() {
                         onClick={() => setPreviewLabelUnit("PACK")}
                         className={`px-3 py-1 text-xs font-extrabold rounded-lg transition ${
                           previewLabelUnit === "PACK"
-                            ? "bg-amber-600 text-white shadow-xs"
+                            ? "bg-purple-600 text-white shadow-xs"
                             : "text-slate-600 hover:text-slate-900"
                         }`}
                       >
@@ -2901,22 +3090,30 @@ export default function AdminPage() {
 
                 <BarcodeGenerator
                   barcode={
-                    formData.hasPack && previewLabelUnit === "PACK"
+                    formData.unitMode === "PACK_ONLY"
+                      ? (formData.packBarcode || formData.barcode)
+                      : formData.unitMode === "BOTH" && previewLabelUnit === "PACK"
                       ? (formData.packBarcode || (formData.barcode + "P"))
                       : formData.barcode
                   }
                   productName={
-                    formData.hasPack && previewLabelUnit === "PACK"
+                    formData.unitMode === "PACK_ONLY"
+                      ? `${formData.name || "Nama Barang"} (${formData.packName || "Pack"})`
+                      : formData.unitMode === "BOTH" && previewLabelUnit === "PACK"
                       ? `${formData.name || "Nama Barang"} (${formData.packName || "Pack"} isi ${formData.packQuantity || 10})`
                       : (formData.name || "Nama Barang Baru")
                   }
                   sellingPrice={
-                    formData.hasPack && previewLabelUnit === "PACK"
+                    formData.unitMode === "PACK_ONLY"
+                      ? (formData.sellingPrice || 0)
+                      : formData.unitMode === "BOTH" && previewLabelUnit === "PACK"
                       ? (formData.packPrice || 0)
                       : (formData.sellingPrice || 0)
                   }
                   onGenerateRandom={(newCode) => {
-                    if (formData.hasPack && previewLabelUnit === "PACK") {
+                    if (formData.unitMode === "PACK_ONLY") {
+                      setFormData((prev) => ({ ...prev, barcode: newCode, packBarcode: newCode }));
+                    } else if (formData.unitMode === "BOTH" && previewLabelUnit === "PACK") {
                       setFormData((prev) => ({ ...prev, packBarcode: newCode }));
                     } else {
                       setFormData((prev) => ({ ...prev, barcode: newCode }));
@@ -3009,127 +3206,302 @@ export default function AdminPage() {
                   </select>
                 </div>
 
-                <div>
-                  <label className="text-xs font-extrabold text-slate-800 uppercase tracking-wider block mb-1">
-                    Kode Barcode *
+                {/* 3 PILIHAN MODEL SATUAN PENJUALAN */}
+                <div className="md:col-span-2">
+                  <label className="text-xs font-black text-slate-800 uppercase tracking-wider block mb-2">
+                    Model Satuan Penjualan Barang *
                   </label>
-                  <input
-                    type="text"
-                    required
-                    value={editFormData.barcode}
-                    onChange={(e) => setEditFormData({ ...editFormData, barcode: e.target.value })}
-                    className="w-full px-3.5 py-2 text-sm font-mono font-bold text-slate-900 bg-white border-2 border-slate-300 rounded-xl focus:outline-none focus:border-amber-600"
-                  />
-                </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                    {/* Mode 1: Hanya Eceran */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditFormData({
+                          ...editFormData,
+                          unitMode: "PCS_ONLY",
+                          hasPack: false,
+                        });
+                      }}
+                      className={`p-3 rounded-2xl border-2 text-left transition relative cursor-pointer ${
+                        editFormData.unitMode === "PCS_ONLY"
+                          ? "border-amber-600 bg-amber-50/70 shadow-sm ring-1 ring-amber-500"
+                          : "border-slate-200 bg-white hover:border-slate-300"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-base">🏷️</span>
+                        <span className="text-xs font-black text-slate-900">Hanya Eceran (Pcs)</span>
+                      </div>
+                      <p className="text-[10px] text-slate-500 leading-tight">
+                        Dijual satuan per biji (Gunting, Penggaris, Buku, dll)
+                      </p>
+                    </button>
 
-                <div>
-                  <label className="text-xs font-extrabold text-slate-800 uppercase tracking-wider block mb-1">
-                    Harga Modal / Beli (HPP) *
-                  </label>
-                  <input
-                    type="number"
-                    min={0}
-                    required
-                    value={editFormData.costPrice}
-                    onChange={(e) => setEditFormData({ ...editFormData, costPrice: Number(e.target.value) || 0 })}
-                    className="w-full px-3.5 py-2 text-sm font-extrabold text-slate-900 bg-white border-2 border-slate-300 rounded-xl focus:outline-none focus:border-amber-600"
-                  />
-                </div>
+                    {/* Mode 2: Hanya Grosir */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const pName = editFormData.packName || "Pack";
+                        setEditFormData({
+                          ...editFormData,
+                          unitMode: "PACK_ONLY",
+                          hasPack: true,
+                          packQuantity: 1,
+                          packName: pName,
+                          packPrice: editFormData.sellingPrice,
+                          packBarcode: editFormData.barcode,
+                        });
+                      }}
+                      className={`p-3 rounded-2xl border-2 text-left transition relative cursor-pointer ${
+                        editFormData.unitMode === "PACK_ONLY"
+                          ? "border-blue-600 bg-blue-50/70 shadow-sm ring-1 ring-blue-500"
+                          : "border-slate-200 bg-white hover:border-slate-300"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-base">📦</span>
+                        <span className="text-xs font-black text-slate-900">Hanya Grosir (Pack/Rim)</span>
+                      </div>
+                      <p className="text-[10px] text-slate-500 leading-tight">
+                        Dijual utuh per dus/rim/pack (Kertas HVS, Paperclip Box)
+                      </p>
+                    </button>
 
-                <div>
-                  <label className="text-xs font-extrabold text-slate-800 uppercase tracking-wider block mb-1">
-                    Harga Jual Pelanggan *
-                  </label>
-                  <input
-                    type="number"
-                    min={0}
-                    required
-                    value={editFormData.sellingPrice}
-                    onChange={(e) => setEditFormData({ ...editFormData, sellingPrice: Number(e.target.value) || 0 })}
-                    className="w-full px-3.5 py-2 text-sm font-extrabold text-slate-900 bg-white border-2 border-slate-300 rounded-xl focus:outline-none focus:border-amber-600"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-xs font-extrabold text-slate-800 uppercase tracking-wider block mb-1">
-                    Sisa Stok Fisik
-                  </label>
-                  <input
-                    type="number"
-                    min={0}
-                    value={editFormData.stock}
-                    onChange={(e) => setEditFormData({ ...editFormData, stock: Number(e.target.value) || 0 })}
-                    className="w-full px-3.5 py-2 text-sm font-extrabold text-slate-900 bg-white border-2 border-slate-300 rounded-xl focus:outline-none focus:border-amber-600"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-xs font-extrabold text-slate-800 uppercase tracking-wider block mb-1">
-                    Batas Alert Stok Kritis
-                  </label>
-                  <input
-                    type="number"
-                    min={1}
-                    value={editFormData.minStock}
-                    onChange={(e) => setEditFormData({ ...editFormData, minStock: Number(e.target.value) || 1 })}
-                    className="w-full px-3.5 py-2 text-sm font-extrabold text-slate-900 bg-white border-2 border-slate-300 rounded-xl focus:outline-none focus:border-amber-600"
-                  />
-                </div>
-
-                {/* Multi-Satuan (Harga Pack / Lusin / Rim) */}
-                <div className="md:col-span-2 bg-slate-50 border border-slate-200 rounded-2xl p-4">
-                  <div className="flex items-center justify-between mb-2">
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={Boolean(editFormData.hasPack)}
-                        onChange={(e) => setEditFormData({ ...editFormData, hasPack: e.target.checked })}
-                        className="w-4 h-4 text-amber-600 rounded"
-                      />
-                      <span className="text-xs font-black text-slate-800 uppercase tracking-wider">
-                        Aktifkan Harga Grosir / Per Pack (Multi-Satuan)
-                      </span>
-                    </label>
-                    <span className="text-[10px] bg-amber-100 text-amber-800 font-bold px-2 py-0.5 rounded-full">
-                      Pcs vs Pack
-                    </span>
+                    {/* Mode 3: Keduanya */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditFormData({
+                          ...editFormData,
+                          unitMode: "BOTH",
+                          hasPack: true,
+                          packQuantity: editFormData.packQuantity && editFormData.packQuantity > 1 ? editFormData.packQuantity : 10,
+                          packName: editFormData.packName || "Pack",
+                          packPrice: editFormData.packPrice || (editFormData.sellingPrice * 10),
+                          packBarcode: editFormData.packBarcode || (editFormData.barcode + "P"),
+                        });
+                      }}
+                      className={`p-3 rounded-2xl border-2 text-left transition relative cursor-pointer ${
+                        editFormData.unitMode === "BOTH"
+                          ? "border-purple-600 bg-purple-50/70 shadow-sm ring-1 ring-purple-500"
+                          : "border-slate-200 bg-white hover:border-slate-300"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-base">🔄</span>
+                        <span className="text-xs font-black text-slate-900">Keduanya (Pcs &amp; Pack)</span>
+                      </div>
+                      <p className="text-[10px] text-slate-500 leading-tight">
+                        Bisa eceran &amp; ada diskon grosir per kemasan pack (Pulpen, Tipex)
+                      </p>
+                    </button>
                   </div>
-                  {editFormData.hasPack && (
+                </div>
+
+                {/* INPUT FIELD DINAMIS SESUAI MODE */}
+                {editFormData.unitMode === "PACK_ONLY" ? (
+                  <>
+                    <div>
+                      <label className="text-xs font-extrabold text-slate-800 uppercase tracking-wider block mb-1">
+                        Nama Satuan Kemasan Grosir *
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={editFormData.packName || ""}
+                        onChange={(e) => setEditFormData({ ...editFormData, packName: e.target.value })}
+                        placeholder="Contoh: Pack, Rim, Box, Lusin, Dus"
+                        className="w-full px-3.5 py-2 text-sm font-bold text-slate-900 bg-white border-2 border-slate-300 rounded-xl focus:outline-none focus:border-amber-600"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-extrabold text-slate-800 uppercase tracking-wider block mb-1">
+                        Kode Barcode Kemasan {editFormData.packName || "Pack"} *
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={editFormData.barcode}
+                        onChange={(e) => setEditFormData({ ...editFormData, barcode: e.target.value, packBarcode: e.target.value })}
+                        className="w-full px-3.5 py-2 text-sm font-mono font-bold text-slate-900 bg-white border-2 border-slate-300 rounded-xl focus:outline-none focus:border-amber-600"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-extrabold text-slate-800 uppercase tracking-wider block mb-1">
+                        Harga Modal / Beli per {editFormData.packName || "Pack"} (HPP) *
+                      </label>
+                      <input
+                        type="number"
+                        min={0}
+                        required
+                        value={editFormData.costPrice}
+                        onChange={(e) => setEditFormData({ ...editFormData, costPrice: Number(e.target.value) || 0 })}
+                        className="w-full px-3.5 py-2 text-sm font-extrabold text-slate-900 bg-white border-2 border-slate-300 rounded-xl focus:outline-none focus:border-amber-600"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-extrabold text-slate-800 uppercase tracking-wider block mb-1">
+                        Harga Jual Pelanggan per {editFormData.packName || "Pack"} *
+                      </label>
+                      <input
+                        type="number"
+                        min={0}
+                        required
+                        value={editFormData.sellingPrice}
+                        onChange={(e) => {
+                          const val = Number(e.target.value) || 0;
+                          setEditFormData({ ...editFormData, sellingPrice: val, packPrice: val });
+                        }}
+                        className="w-full px-3.5 py-2 text-sm font-extrabold text-slate-900 bg-white border-2 border-slate-300 rounded-xl focus:outline-none focus:border-amber-600"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-extrabold text-slate-800 uppercase tracking-wider block mb-1">
+                        Sisa Stok (Jumlah {editFormData.packName || "Pack"})
+                      </label>
+                      <input
+                        type="number"
+                        min={0}
+                        value={editFormData.stock}
+                        onChange={(e) => setEditFormData({ ...editFormData, stock: Number(e.target.value) || 0 })}
+                        className="w-full px-3.5 py-2 text-sm font-extrabold text-slate-900 bg-white border-2 border-slate-300 rounded-xl focus:outline-none focus:border-amber-600"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-extrabold text-slate-800 uppercase tracking-wider block mb-1">
+                        Batas Alert Stok Kritis ({editFormData.packName || "Pack"})
+                      </label>
+                      <input
+                        type="number"
+                        min={1}
+                        value={editFormData.minStock}
+                        onChange={(e) => setEditFormData({ ...editFormData, minStock: Number(e.target.value) || 1 })}
+                        className="w-full px-3.5 py-2 text-sm font-extrabold text-slate-900 bg-white border-2 border-slate-300 rounded-xl focus:outline-none focus:border-amber-600"
+                      />
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div>
+                      <label className="text-xs font-extrabold text-slate-800 uppercase tracking-wider block mb-1">
+                        Kode Barcode Eceran *
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={editFormData.barcode}
+                        onChange={(e) => setEditFormData({ ...editFormData, barcode: e.target.value })}
+                        className="w-full px-3.5 py-2 text-sm font-mono font-bold text-slate-900 bg-white border-2 border-slate-300 rounded-xl focus:outline-none focus:border-amber-600"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-extrabold text-slate-800 uppercase tracking-wider block mb-1">
+                        Harga Modal / Beli (HPP) per Pcs *
+                      </label>
+                      <input
+                        type="number"
+                        min={0}
+                        required
+                        value={editFormData.costPrice}
+                        onChange={(e) => setEditFormData({ ...editFormData, costPrice: Number(e.target.value) || 0 })}
+                        className="w-full px-3.5 py-2 text-sm font-extrabold text-slate-900 bg-white border-2 border-slate-300 rounded-xl focus:outline-none focus:border-amber-600"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-extrabold text-slate-800 uppercase tracking-wider block mb-1">
+                        Harga Jual Eceran Pelanggan (Rp/Pcs) *
+                      </label>
+                      <input
+                        type="number"
+                        min={0}
+                        required
+                        value={editFormData.sellingPrice}
+                        onChange={(e) => setEditFormData({ ...editFormData, sellingPrice: Number(e.target.value) || 0 })}
+                        className="w-full px-3.5 py-2 text-sm font-extrabold text-slate-900 bg-white border-2 border-slate-300 rounded-xl focus:outline-none focus:border-amber-600"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-extrabold text-slate-800 uppercase tracking-wider block mb-1">
+                        {editFormData.unitMode === "BOTH" ? "Total Stok Fisik Gudang (Pcs)" : "Sisa Stok Fisik (Pcs)"}
+                      </label>
+                      <input
+                        type="number"
+                        min={0}
+                        value={editFormData.stock}
+                        onChange={(e) => setEditFormData({ ...editFormData, stock: Number(e.target.value) || 0 })}
+                        className="w-full px-3.5 py-2 text-sm font-extrabold text-slate-900 bg-white border-2 border-slate-300 rounded-xl focus:outline-none focus:border-amber-600"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-extrabold text-slate-800 uppercase tracking-wider block mb-1">
+                        Batas Alert Stok Kritis (Pcs)
+                      </label>
+                      <input
+                        type="number"
+                        min={1}
+                        value={editFormData.minStock}
+                        onChange={(e) => setEditFormData({ ...editFormData, minStock: Number(e.target.value) || 1 })}
+                        className="w-full px-3.5 py-2 text-sm font-extrabold text-slate-900 bg-white border-2 border-slate-300 rounded-xl focus:outline-none focus:border-amber-600"
+                      />
+                    </div>
+                  </>
+                )}
+
+                {/* Multi-Satuan Detail Box Khusus Mode "BOTH" */}
+                {editFormData.unitMode === "BOTH" && (
+                  <div className="md:col-span-2 bg-gradient-to-r from-purple-50/70 to-blue-50/70 border border-purple-200 rounded-2xl p-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-xs font-black text-purple-950 uppercase tracking-wider flex items-center gap-1.5">
+                        <span>📦</span> Informasi Kemasan Grosir / Pack
+                      </span>
+                      <span className="text-[10px] bg-purple-100 text-purple-800 font-extrabold px-2 py-0.5 rounded-full">
+                        Multi-Satuan Aktif
+                      </span>
+                    </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-2">
                       <div>
-                        <label className="text-[11px] font-bold text-slate-600 block mb-1">Nama Satuan Pack</label>
+                        <label className="text-[11px] font-bold text-slate-700 block mb-1">Nama Satuan Pack *</label>
                         <input
                           type="text"
                           placeholder="Contoh: Pack, Lusin, Rim"
                           value={editFormData.packName || ""}
                           onChange={(e) => setEditFormData({ ...editFormData, packName: e.target.value })}
-                          className="w-full px-3 py-2 text-xs font-bold bg-white border border-slate-300 rounded-xl"
+                          className="w-full px-3 py-2 text-xs font-bold bg-white border border-slate-300 rounded-xl focus:border-purple-600"
                         />
                       </div>
                       <div>
-                        <label className="text-[11px] font-bold text-slate-600 block mb-1">Isi (Pcs) per Pack</label>
+                        <label className="text-[11px] font-bold text-slate-700 block mb-1">Isi (Pcs) per Pack *</label>
                         <input
                           type="number"
                           min={2}
                           placeholder="Contoh: 10 atau 12"
                           value={editFormData.packQuantity || ""}
                           onChange={(e) => setEditFormData({ ...editFormData, packQuantity: Number(e.target.value) || 0 })}
-                          className="w-full px-3 py-2 text-xs font-bold bg-white border border-slate-300 rounded-xl"
+                          className="w-full px-3 py-2 text-xs font-bold bg-white border border-slate-300 rounded-xl focus:border-purple-600"
                         />
                       </div>
                       <div>
-                        <label className="text-[11px] font-bold text-slate-600 block mb-1">Harga per Pack (Rp)</label>
+                        <label className="text-[11px] font-bold text-slate-700 block mb-1">Harga per Pack (Rp) *</label>
                         <input
                           type="number"
                           min={0}
                           placeholder="Contoh: 45000"
                           value={editFormData.packPrice || ""}
                           onChange={(e) => setEditFormData({ ...editFormData, packPrice: Number(e.target.value) || 0 })}
-                          className="w-full px-3 py-2 text-xs font-black text-amber-700 bg-white border border-slate-300 rounded-xl"
+                          className="w-full px-3 py-2 text-xs font-black text-purple-800 bg-white border border-slate-300 rounded-xl focus:border-purple-600"
                         />
                       </div>
                       <div>
-                        <label className="text-[11px] font-bold text-slate-600 block mb-1">
+                        <label className="text-[11px] font-bold text-slate-700 block mb-1">
                           Barcode Pack (Dus/Box)
                         </label>
                         <div className="flex gap-1.5">
@@ -3143,7 +3515,7 @@ export default function AdminPage() {
                           <button
                             type="button"
                             onClick={() => setEditFormData({ ...editFormData, packBarcode: (editFormData.barcode || "899") + "P" })}
-                            className="px-2 py-1 bg-amber-100 hover:bg-amber-200 text-amber-800 text-[10px] font-bold rounded-lg border border-amber-300 shrink-0"
+                            className="px-2 py-1 bg-purple-100 hover:bg-purple-200 text-purple-800 text-[10px] font-bold rounded-lg border border-purple-300 shrink-0"
                             title="Auto-generate Barcode Pack"
                           >
                             Auto
@@ -3151,8 +3523,8 @@ export default function AdminPage() {
                         </div>
                       </div>
                     </div>
-                  )}
-                </div>
+                  </div>
+                )}
               </div>
 
               <div className="pt-4 flex items-center justify-end gap-3 border-t border-slate-200">
@@ -3475,7 +3847,8 @@ export default function AdminPage() {
               </button>
             </div>
             <div className="p-4 space-y-3">
-              {selectedProductForBarcode.hasPack && (
+              {/* Jika mode BOTH, tampilkan switch label */}
+              {selectedProductForBarcode.unitMode === "BOTH" && (
                 <div className="flex items-center justify-center gap-1.5 bg-slate-100 p-1 rounded-xl border border-slate-200">
                   <button
                     type="button"
@@ -3493,7 +3866,7 @@ export default function AdminPage() {
                     onClick={() => setBarcodeModalUnit("PACK")}
                     className={`flex-1 py-1 text-xs font-extrabold rounded-lg transition text-center ${
                       barcodeModalUnit === "PACK"
-                        ? "bg-amber-600 text-white shadow-xs"
+                        ? "bg-purple-600 text-white shadow-xs"
                         : "text-slate-600 hover:text-slate-900"
                     }`}
                   >
@@ -3501,19 +3874,30 @@ export default function AdminPage() {
                   </button>
                 </div>
               )}
+              {selectedProductForBarcode.unitMode === "PACK_ONLY" && (
+                <div className="text-center py-1 px-2.5 bg-blue-50 text-blue-900 rounded-xl text-xs font-black border border-blue-200">
+                  📦 Label Kemasan Grosir ({selectedProductForBarcode.packName || "Pack"})
+                </div>
+              )}
               <BarcodeGenerator
                 barcode={
-                  selectedProductForBarcode.hasPack && barcodeModalUnit === "PACK"
+                  selectedProductForBarcode.unitMode === "PACK_ONLY"
+                    ? (selectedProductForBarcode.packBarcode || selectedProductForBarcode.barcode)
+                    : selectedProductForBarcode.unitMode === "BOTH" && barcodeModalUnit === "PACK"
                     ? (selectedProductForBarcode.packBarcode || (selectedProductForBarcode.barcode + "P"))
                     : selectedProductForBarcode.barcode
                 }
                 productName={
-                  selectedProductForBarcode.hasPack && barcodeModalUnit === "PACK"
+                  selectedProductForBarcode.unitMode === "PACK_ONLY"
+                    ? `${selectedProductForBarcode.name} (${selectedProductForBarcode.packName || "Pack"})`
+                    : selectedProductForBarcode.unitMode === "BOTH" && barcodeModalUnit === "PACK"
                     ? `${selectedProductForBarcode.name} (${selectedProductForBarcode.packName || "Pack"} isi ${selectedProductForBarcode.packQuantity || 10})`
                     : selectedProductForBarcode.name
                 }
                 sellingPrice={
-                  selectedProductForBarcode.hasPack && barcodeModalUnit === "PACK"
+                  selectedProductForBarcode.unitMode === "PACK_ONLY"
+                    ? (selectedProductForBarcode.packPrice || selectedProductForBarcode.sellingPrice)
+                    : selectedProductForBarcode.unitMode === "BOTH" && barcodeModalUnit === "PACK"
                     ? (selectedProductForBarcode.packPrice || 0)
                     : selectedProductForBarcode.sellingPrice
                 }

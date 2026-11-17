@@ -62,10 +62,13 @@ interface ProductItem {
   category?: {
     name: string;
   };
+  unitMode?: "PCS_ONLY" | "PACK_ONLY" | "BOTH";
   hasPack?: boolean;
   packName?: string | null;
   packQuantity?: number | null;
   packPrice?: number | null;
+  packBarcode?: string | null;
+  matchedUnit?: "PCS" | "PACK";
   isBundle?: boolean;
   bundleItems?: any[];
 }
@@ -360,6 +363,13 @@ export default function PosPage() {
       const res = await fetch(url);
       const data = await res.json();
       if (data.success) {
+        // Jika scan/pencarian menghasilkan exact match 1 produk
+        if (data.exactMatch && data.products && data.products.length === 1 && query.trim().length >= 4) {
+          if (handleBarcodeLookupRef.current) {
+            handleBarcodeLookupRef.current(query.trim());
+            return;
+          }
+        }
         setProducts(data.products || []);
         if (data.categories) setCategories(data.categories);
       }
@@ -549,8 +559,8 @@ export default function PosPage() {
           }
           usbScanBufferRef.current = "";
         } else if (key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
-          // Jika interval lebih dari 80ms, anggap manusia mengetik biasa -> reset buffer
-          if (diff > 80) {
+          // Jika interval lebih dari 160ms, anggap manusia mengetik biasa -> reset buffer
+          if (diff > 160) {
             usbScanBufferRef.current = "";
           }
           usbScanBufferRef.current += key;
@@ -568,8 +578,9 @@ export default function PosPage() {
 
   // Tambahkan produk ke keranjang (Mendukung Multi-Satuan Pcs vs Pack)
   const addToCart = (product: ProductItem, qtyToAdd: number = 1, unitType: "PCS" | "PACK" = "PCS") => {
-    const isPack = unitType === "PACK" && product.hasPack && product.packPrice;
-    const effectivePrice = isPack ? (product.packPrice as number) : product.sellingPrice;
+    const finalUnit: "PCS" | "PACK" = product.unitMode === "PACK_ONLY" ? "PACK" : unitType;
+    const isPack = (finalUnit === "PACK" || product.unitMode === "PACK_ONLY") && product.hasPack;
+    const effectivePrice = isPack ? (product.packPrice || product.sellingPrice) : product.sellingPrice;
     const multiplier = isPack ? (product.packQuantity || 1) : 1;
     const stockNeeded = qtyToAdd * multiplier;
 
@@ -580,7 +591,7 @@ export default function PosPage() {
 
     setCart((prev) => {
       const existingIndex = prev.findIndex(
-        (item) => item.product.id === product.id && (item.unitType || "PCS") === unitType
+        (item) => item.product.id === product.id && (item.unitType || "PCS") === finalUnit
       );
 
       if (existingIndex > -1) {
@@ -588,7 +599,7 @@ export default function PosPage() {
         const newQty = currentQty + qtyToAdd;
 
         if (newQty * multiplier > product.stock) {
-          notify(`Stok produk "${product.name}" hanya tersisa ${product.stock} pcs!`, "error");
+          notify(`Stok produk "${product.name}" hanya tersisa ${product.stock} ${isPack ? product.packName || "pack" : "pcs"}!`, "error");
           return prev;
         }
 
@@ -604,7 +615,7 @@ export default function PosPage() {
           {
             product,
             qty: qtyToAdd,
-            unitType,
+            unitType: finalUnit,
             subtotal: qtyToAdd * effectivePrice,
           },
           ...prev,
@@ -627,12 +638,12 @@ export default function PosPage() {
     setCart((prev) =>
       prev.map((item) => {
         if (item.product.id === productId && (item.unitType || "PCS") === unitType) {
-          const isPack = unitType === "PACK" && item.product.hasPack && item.product.packPrice;
-          const effectivePrice = isPack ? (item.product.packPrice as number) : item.product.sellingPrice;
+          const isPack = (unitType === "PACK" || item.product.unitMode === "PACK_ONLY") && item.product.hasPack;
+          const effectivePrice = isPack ? (item.product.packPrice || item.product.sellingPrice) : item.product.sellingPrice;
           const multiplier = isPack ? (item.product.packQuantity || 1) : 1;
 
           if (newQty * multiplier > item.product.stock) {
-            notify(`Stok produk hanya tersisa ${item.product.stock} pcs!`, "error");
+            notify(`Stok produk hanya tersisa ${item.product.stock} ${isPack ? item.product.packName || "pack" : "pcs"}!`, "error");
             return item;
           }
           return {
@@ -707,9 +718,10 @@ export default function PosPage() {
       if (data.success && data.products && data.products.length > 0) {
         if (data.exactMatch || data.products.length === 1) {
           const item = data.products[0];
-          const unit = item.matchedUnit || (data.matchedUnit === "PACK" ? "PACK" : "PCS");
+          const unit = item.matchedUnit || (data.matchedUnit === "PACK" ? "PACK" : (item.unitMode === "PACK_ONLY" ? "PACK" : "PCS"));
           addToCart(item, 1, unit);
           setBarcodeInput("");
+          focusScanner();
         } else {
           setProducts(data.products);
           notify(`${data.products.length} barang cocok ditemukan`, "info");
@@ -717,6 +729,7 @@ export default function PosPage() {
       } else {
         notify(`Barcode/kode "${query}" tidak ditemukan!`, "error");
         setBarcodeInput("");
+        focusScanner();
       }
     } catch (err) {
       console.error(err);
@@ -726,7 +739,9 @@ export default function PosPage() {
 
   const handleScanSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    await handleBarcodeLookup(barcodeInput);
+    if (barcodeInput.trim()) {
+      await handleBarcodeLookup(barcodeInput);
+    }
   };
 
   handleBarcodeLookupRef.current = handleBarcodeLookup;
@@ -962,11 +977,38 @@ export default function PosPage() {
                   type="text"
                   value={barcodeInput}
                   onChange={(e) => {
-                    setBarcodeInput(e.target.value);
-                    if (e.target.value.length >= 2) {
-                      loadCatalog(e.target.value, selectedCategory);
-                    } else if (e.target.value === "") {
+                    const val = e.target.value;
+                    setBarcodeInput(val);
+                    if (val.length >= 3) {
+                      const trimmed = val.trim();
+                      // Cek exact pack barcode di cache lokal
+                      const exactPack = products.find((p) => p.hasPack && p.packBarcode === trimmed);
+                      if (exactPack) {
+                        addToCart(exactPack, 1, "PACK");
+                        setBarcodeInput("");
+                        focusScanner();
+                        return;
+                      }
+                      // Cek exact pcs/item barcode di cache lokal
+                      const exactPcs = products.find((p) => p.barcode === trimmed);
+                      if (exactPcs) {
+                        const unit = exactPcs.unitMode === "PACK_ONLY" ? "PACK" : "PCS";
+                        addToCart(exactPcs, 1, unit);
+                        setBarcodeInput("");
+                        focusScanner();
+                        return;
+                      }
+                      loadCatalog(val, selectedCategory);
+                    } else if (val === "") {
                       loadCatalog("", selectedCategory);
+                    }
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === "Tab") {
+                      e.preventDefault();
+                      if (barcodeInput.trim()) {
+                        handleBarcodeLookup(barcodeInput);
+                      }
                     }
                   }}
                   placeholder="Scan barcode USB atau ketik nama/kode barang... (Tekan Enter)"
@@ -1088,6 +1130,8 @@ export default function PosPage() {
                 {products.map((p) => {
                   const isOutOfStock = p.stock <= 0;
                   const isLowStock = p.stock > 0 && p.stock <= (p.minStock || 5);
+                  const isPackOnly = p.unitMode === "PACK_ONLY";
+                  const isBoth = p.unitMode === "BOTH" || (p.hasPack && p.packPrice && !isPackOnly);
                   const inCartItem = cart.find((c) => c.product.id === p.id);
                   const catMeta = getCategoryMeta(p.category?.name);
                   const CatIcon = catMeta.icon;
@@ -1095,7 +1139,7 @@ export default function PosPage() {
                   return (
                     <div
                       key={p.id}
-                      onClick={() => !isOutOfStock && addToCart(p, 1)}
+                      onClick={() => !isOutOfStock && addToCart(p, 1, isPackOnly ? "PACK" : "PCS")}
                       className={`bg-white rounded-2xl p-3.5 border transition-all duration-150 cursor-pointer flex flex-col justify-between group shadow-xs relative overflow-hidden ${catMeta.cardBorder} ${
                         isOutOfStock
                           ? "opacity-60 border-slate-200 bg-slate-50 cursor-not-allowed"
@@ -1107,17 +1151,27 @@ export default function PosPage() {
                       {/* Badge Jumlah di Keranjang */}
                       {inCartItem && (
                         <div className="absolute top-2 right-2 bg-emerald-600 text-white text-[10px] font-black px-2 py-0.5 rounded-full shadow-xs flex items-center gap-1">
-                          <span>{inCartItem.qty} pcs</span>
+                          <span>{inCartItem.qty} {inCartItem.unitType === "PACK" ? p.packName || "pack" : "pcs"}</span>
                         </div>
                       )}
 
                       <div>
                         {/* Kategori Badge dengan Ikon Khusus */}
-                        <div className="flex items-center gap-1.5 text-[10px] mb-1.5">
+                        <div className="flex items-center gap-1.5 text-[10px] mb-1.5 flex-wrap">
                           <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg border font-black text-[10px] ${catMeta.pill}`}>
                             <CatIcon className="w-3 h-3" />
                             <span className="truncate max-w-[105px]">{p.category?.name || "ATK"}</span>
                           </span>
+                          {isPackOnly && (
+                            <span className="text-[9px] font-black bg-blue-100 text-blue-800 px-1.5 py-0.5 rounded border border-blue-200">
+                              📦 KHUSUS {p.packName?.toUpperCase() || "PACK"}
+                            </span>
+                          )}
+                          {isBoth && (
+                            <span className="text-[9px] font-black bg-purple-100 text-purple-800 px-1.5 py-0.5 rounded border border-purple-200">
+                              🔄 MULTI-SATUAN
+                            </span>
+                          )}
                         </div>
 
                         {/* Nama Produk */}
@@ -1141,10 +1195,13 @@ export default function PosPage() {
                           {/* Harga */}
                           <div>
                             <div className="text-[10px] text-slate-400 font-medium">
-                              {p.hasPack ? "Harga Pcs" : "Harga Satuan"}
+                              {isPackOnly ? `Harga per ${p.packName || "Pack"}` : isBoth ? "Harga Eceran (Pcs)" : "Harga Satuan"}
                             </div>
                             <div className="text-sm sm:text-base font-black text-slate-900 group-hover:text-emerald-700 transition">
-                              Rp {p.sellingPrice.toLocaleString("id-ID")}
+                              Rp {(isPackOnly ? (p.packPrice || p.sellingPrice) : p.sellingPrice).toLocaleString("id-ID")}
+                              {isPackOnly && (
+                                <span className="text-[11px] font-bold text-slate-500 ml-1">/{p.packName || "Pack"}</span>
+                              )}
                             </div>
                           </div>
 
@@ -1162,7 +1219,7 @@ export default function PosPage() {
                             ) : (
                               <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-lg flex items-center gap-1">
                                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                                {p.stock} pcs
+                                {p.stock} {isPackOnly ? p.packName || "pack" : "pcs"}
                               </span>
                             )}
 
@@ -1174,19 +1231,21 @@ export default function PosPage() {
                           </div>
                         </div>
 
-                        {/* Tombol Cepat Beli Satuan Pack */}
-                        {p.hasPack && p.packPrice && !isOutOfStock && (
+                        {/* Tombol Cepat Beli Satuan Pack untuk Produk Multi-Satuan */}
+                        {isBoth && p.packPrice && !isOutOfStock && (
                           <button
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation();
                               addToCart(p, 1, "PACK");
                             }}
-                            className="mt-2 w-full py-1.5 px-2 bg-blue-50 hover:bg-blue-600 hover:text-white text-blue-800 text-[11px] font-black rounded-xl border border-blue-200 hover:border-blue-600 transition flex items-center justify-between"
+                            className="mt-2 w-full py-1.5 px-2.5 bg-blue-50 hover:bg-blue-600 hover:text-white text-blue-800 text-[11px] font-black rounded-xl border border-blue-200 hover:border-blue-600 transition flex items-center justify-between shadow-2xs active:scale-95"
                             title={`Beli 1 ${p.packName || "Pack"} (@${p.packQuantity} pcs)`}
                           >
-                            <span>+ 1 {p.packName || "Pack"} ({p.packQuantity}pcs)</span>
-                            <span>Rp {p.packPrice.toLocaleString("id-ID")}</span>
+                            <span className="flex items-center gap-1">
+                              <span>📦</span> +1 {p.packName || "Pack"} ({p.packQuantity}pcs)
+                            </span>
+                            <span className="font-mono">Rp {p.packPrice.toLocaleString("id-ID")}</span>
                           </button>
                         )}
                       </div>
@@ -1395,20 +1454,26 @@ export default function PosPage() {
                           Rp {unitPrice.toLocaleString("id-ID")}
                         </span>
 
-                        {/* Multi-Satuan Switcher Button */}
+                        {/* Multi-Satuan Indicator & Switcher */}
                         {item.product.hasPack && item.product.packPrice && (
-                          <button
-                            type="button"
-                            onClick={() => toggleCartUnit(item)}
-                            className={`text-[10px] font-black px-2 py-0.5 rounded-lg border transition ${
-                              isPack
-                                ? "bg-blue-600 text-white border-blue-600"
-                                : "bg-slate-100 hover:bg-blue-50 text-slate-700 border-slate-300"
-                            }`}
-                            title="Klik untuk beralih antara satuan Pcs dan Pack"
-                          >
-                            {isPack ? `${item.product.packName || "Pack"} (@${item.product.packQuantity})` : "Pcs (Eceran)"}
-                          </button>
+                          item.product.unitMode === "PACK_ONLY" ? (
+                            <span className="text-[10px] font-black bg-blue-100 text-blue-800 px-2 py-0.5 rounded-md border border-blue-300">
+                              📦 {item.product.packName ? item.product.packName.toUpperCase() : "PACK"}
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => toggleCartUnit(item)}
+                              className={`text-[10px] font-black px-2 py-0.5 rounded-lg border transition ${
+                                isPack
+                                  ? "bg-blue-600 text-white border-blue-600 shadow-2xs"
+                                  : "bg-slate-100 hover:bg-blue-50 text-slate-700 border-slate-300"
+                              }`}
+                              title="Klik untuk beralih antara satuan Pcs dan Pack"
+                            >
+                              {isPack ? `📦 ${item.product.packName || "Pack"} (@${item.product.packQuantity})` : "🏷️ Pcs (Eceran)"}
+                            </button>
+                          )
                         )}
                       </div>
                     </div>

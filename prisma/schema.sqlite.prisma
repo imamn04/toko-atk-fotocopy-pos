@@ -52,6 +52,7 @@ model Product {
   stock            Int               @default(0) // Sisa stok saat ini
   minStock         Int               @default(5) // Batas alert stok menipis
   isActive         Boolean           @default(true)
+  unitMode         String            @default("PCS_ONLY") // "PCS_ONLY" | "PACK_ONLY" | "BOTH"
   hasPack          Boolean           @default(false) // Dukungan Multi-Satuan Grosir
   packName         String?           // e.g. "Pack", "Lusin", "Rim", "Box"
   packQuantity     Int?              // Isi berapa pcs per pack (e.g. 10)

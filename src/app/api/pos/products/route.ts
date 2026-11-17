@@ -22,6 +22,7 @@ export async function GET(req: Request) {
       stock: true,
       minStock: true,
       categoryId: true,
+      unitMode: true,
       hasPack: true,
       packName: true,
       packQuantity: true,
@@ -113,7 +114,7 @@ export async function GET(req: Request) {
       });
     }
 
-    // 1b. Cek di barcode satuan eceran reguler (PCS)
+    // 1b. Cek di barcode satuan reguler
     const exactBarcode = await prisma.product.findFirst({
       where: {
         barcode: query,
@@ -123,11 +124,13 @@ export async function GET(req: Request) {
     });
 
     if (exactBarcode) {
+      // Jika mode barang adalah "PACK_ONLY", unit otomatis adalah PACK
+      const unit = exactBarcode.unitMode === "PACK_ONLY" ? "PACK" : "PCS";
       return NextResponse.json({
         success: true,
         exactMatch: true,
-        matchedUnit: "PCS",
-        products: [{ ...exactBarcode, matchedUnit: "PCS" }],
+        matchedUnit: unit,
+        products: [{ ...exactBarcode, matchedUnit: unit }],
         categories,
       });
     }
@@ -185,6 +188,7 @@ export async function GET(req: Request) {
           { name: { contains: query } },
           { sku: { contains: query } },
           { barcode: { contains: query } },
+          { packBarcode: { contains: query } },
         ],
       },
       select: productSelect,
@@ -199,6 +203,7 @@ export async function GET(req: Request) {
           { name: { contains: query } },
           { sku: { contains: query } },
           { barcode: { contains: query } },
+          { packBarcode: { contains: query } },
         ],
       },
       include: {

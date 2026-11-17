@@ -53,12 +53,22 @@ export async function POST(req: Request) {
       minStock,
       barcode,
       sku,
-      hasPack = false,
+      unitMode: rawUnitMode,
+      hasPack: rawHasPack,
       packName,
       packQuantity,
       packPrice,
       packBarcode,
     } = body;
+
+    const unitMode: "PCS_ONLY" | "PACK_ONLY" | "BOTH" =
+      rawUnitMode === "PACK_ONLY" || rawUnitMode === "BOTH" || rawUnitMode === "PCS_ONLY"
+        ? rawUnitMode
+        : Boolean(rawHasPack)
+        ? "BOTH"
+        : "PCS_ONLY";
+
+    const hasPack = unitMode === "PACK_ONLY" || unitMode === "BOTH";
 
     if (!name || !categoryId || costPrice === undefined || sellingPrice === undefined) {
       return NextResponse.json(
@@ -91,15 +101,22 @@ export async function POST(req: Request) {
       );
     }
 
-    // Penanganan Barcode Grosir (Pack Barcode)
+    // Penanganan Satuan & Barcode Grosir (Pack Barcode)
     let finalPackBarcode: string | null = null;
-    if (Boolean(hasPack)) {
-      if (packBarcode && packBarcode.trim()) {
-        finalPackBarcode = packBarcode.trim();
-      } else {
-        // Auto-generate barcode pack turunan dari barcode satuan
-        finalPackBarcode = finalBarcode + "P";
-      }
+    let finalPackName: string | null = null;
+    let finalPackQuantity: number | null = null;
+    let finalPackPrice: number | null = null;
+
+    if (unitMode === "PACK_ONLY") {
+      finalPackName = packName?.trim() || "Pack";
+      finalPackQuantity = 1;
+      finalPackPrice = Number(sellingPrice);
+      finalPackBarcode = packBarcode?.trim() || finalBarcode;
+    } else if (unitMode === "BOTH") {
+      finalPackName = packName?.trim() || "Pack";
+      finalPackQuantity = Number(packQuantity) || 10;
+      finalPackPrice = Number(packPrice) || Number(sellingPrice);
+      finalPackBarcode = packBarcode?.trim() || (finalBarcode + "P");
     }
 
     const newProduct = await prisma.product.create({
@@ -113,10 +130,11 @@ export async function POST(req: Request) {
         stock: Number(stock) || 0,
         minStock: Number(minStock) || 5,
         isActive: true,
-        hasPack: Boolean(hasPack),
-        packName: hasPack && packName ? packName.trim() : null,
-        packQuantity: hasPack && packQuantity ? Number(packQuantity) : null,
-        packPrice: hasPack && packPrice ? Number(packPrice) : null,
+        unitMode,
+        hasPack: unitMode === "PACK_ONLY" || unitMode === "BOTH",
+        packName: finalPackName,
+        packQuantity: finalPackQuantity,
+        packPrice: finalPackPrice,
         packBarcode: finalPackBarcode,
       },
       include: {

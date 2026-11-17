@@ -15,7 +15,7 @@ export async function PATCH(
 
     const { id } = await params;
     const body = await req.json();
-    const { name, categoryId, costPrice, sellingPrice, stock, stockToAdd, minStock, barcode, sku, isActive } = body;
+    const { name, categoryId, costPrice, sellingPrice, stock, stockToAdd, minStock, barcode, sku, isActive, unitMode: rawUnitMode } = body;
 
     const existingProduct = await prisma.product.findUnique({
       where: { id },
@@ -26,6 +26,46 @@ export async function PATCH(
         { success: false, message: "Produk tidak ditemukan." },
         { status: 404 }
       );
+    }
+
+    // Tentukan unitMode baru jika dikirimkan
+    const effectiveUnitMode: "PCS_ONLY" | "PACK_ONLY" | "BOTH" | undefined =
+      rawUnitMode !== undefined
+        ? rawUnitMode
+        : body.hasPack !== undefined
+        ? (body.hasPack ? "BOTH" : "PCS_ONLY")
+        : undefined;
+
+    let packDataUpdate = {};
+    if (effectiveUnitMode !== undefined) {
+      if (effectiveUnitMode === "PACK_ONLY") {
+        packDataUpdate = {
+          unitMode: "PACK_ONLY",
+          hasPack: true,
+          packName: body.packName?.trim() || existingProduct.packName || "Pack",
+          packQuantity: 1,
+          packPrice: body.packPrice !== undefined ? Number(body.packPrice) : (sellingPrice !== undefined ? Number(sellingPrice) : existingProduct.sellingPrice),
+          packBarcode: body.packBarcode?.trim() || (barcode?.trim() || existingProduct.barcode),
+        };
+      } else if (effectiveUnitMode === "BOTH") {
+        packDataUpdate = {
+          unitMode: "BOTH",
+          hasPack: true,
+          packName: body.packName?.trim() || existingProduct.packName || "Pack",
+          packQuantity: body.packQuantity !== undefined ? Number(body.packQuantity) : (existingProduct.packQuantity || 10),
+          packPrice: body.packPrice !== undefined ? Number(body.packPrice) : (existingProduct.packPrice || existingProduct.sellingPrice),
+          packBarcode: body.packBarcode?.trim() || existingProduct.packBarcode || ((barcode?.trim() || existingProduct.barcode) + "P"),
+        };
+      } else {
+        packDataUpdate = {
+          unitMode: "PCS_ONLY",
+          hasPack: false,
+          packName: null,
+          packQuantity: null,
+          packPrice: null,
+          packBarcode: null,
+        };
+      }
     }
 
     // Jika barcode diubah, cek duplikasi dengan produk lain
@@ -53,13 +93,7 @@ export async function PATCH(
         ...(stock !== undefined && { stock: Number(stock) }),
         ...(minStock !== undefined && { minStock: Number(minStock) }),
         ...(isActive !== undefined && { isActive: Boolean(isActive) }),
-        ...(body.hasPack !== undefined && { hasPack: Boolean(body.hasPack) }),
-        ...(body.hasPack !== undefined && {
-          packName: body.hasPack && body.packName ? body.packName.trim() : null,
-          packQuantity: body.hasPack && body.packQuantity ? Number(body.packQuantity) : null,
-          packPrice: body.hasPack && body.packPrice ? Number(body.packPrice) : null,
-          packBarcode: body.hasPack && body.packBarcode ? body.packBarcode.trim() : (body.hasPack ? (barcode?.trim() || existingProduct.barcode) + "P" : null),
-        }),
+        ...packDataUpdate,
         ...(stockToAdd !== undefined && {
           stock: {
             increment: Number(stockToAdd),
