@@ -1721,74 +1721,81 @@ export default function AdminPage() {
                       Perbandingan Omzet (Bar Chart) dan Keuntungan Bersih (Smooth Curve Line)
                     </p>
                   </div>
-                  <span className="text-xs bg-emerald-50 text-emerald-700 border border-emerald-200 px-3 py-1 rounded-full font-bold">
-                    Recharts Analytics
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] text-slate-500 font-semibold bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200 sm:hidden">
+                      👉 Geser grafik
+                    </span>
+                    <span className="text-xs bg-emerald-50 text-emerald-700 border border-emerald-200 px-3 py-1 rounded-full font-bold">
+                      Recharts Analytics
+                    </span>
+                  </div>
                 </div>
 
-                <div className="h-80 w-full pt-2">
-                  {reportLoading ? (
-                    <div className="h-full flex items-center justify-center text-slate-500 text-sm font-bold">
-                      Memuat grafik analitik...
-                    </div>
-                  ) : !reportData || reportData.chartTrend.length === 0 ? (
-                    <div className="h-full flex items-center justify-center text-slate-400 text-sm font-medium">
-                      Belum ada data transaksi pada rentang tanggal ini.
-                    </div>
-                  ) : (
-                    <ResponsiveContainer width="100%" height="100%">
-                      <ComposedChart data={reportData.chartTrend} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
-                        <defs>
-                          <linearGradient id="barOmzetGrad" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="0%" stopColor="#3b82f6" stopOpacity={0.9} />
-                            <stop offset="100%" stopColor="#1d4ed8" stopOpacity={0.8} />
-                          </linearGradient>
-                          <linearGradient id="areaLabaGrad" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="0%" stopColor="#10b981" stopOpacity={0.4} />
-                            <stop offset="100%" stopColor="#10b981" stopOpacity={0.0} />
-                          </linearGradient>
-                        </defs>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                        <XAxis dataKey="date" stroke="#64748b" fontSize={11} fontWeight={600} />
-                        <YAxis stroke="#64748b" fontSize={11} fontWeight={600} />
-                        <Tooltip
-                          formatter={(val: unknown) => `Rp ${Number(val).toLocaleString("id-ID")}`}
-                          contentStyle={{
-                            backgroundColor: "#0f172a",
-                            color: "#ffffff",
-                            borderRadius: "12px",
-                            border: "none",
-                            padding: "10px 14px",
-                            boxShadow: "0 10px 25px -5px rgba(0,0,0,0.3)",
-                          }}
-                        />
-                        <Legend wrapperStyle={{ paddingTop: "12px", fontWeight: 700 }} />
-                        <Bar
-                          dataKey="omzet"
-                          name="Omzet Total (Rp)"
-                          fill="url(#barOmzetGrad)"
-                          radius={[6, 6, 0, 0]}
-                          maxBarSize={45}
-                        />
-                        <Area
-                          type="monotone"
-                          dataKey="laba"
-                          name="Laba Kotor"
-                          stroke="#059669"
-                          strokeWidth={3}
-                          fill="url(#areaLabaGrad)"
-                        />
-                        <Line
-                          type="monotone"
-                          dataKey="laba"
-                          name="Keuntungan Bersih"
-                          stroke="#10b981"
-                          strokeWidth={3}
-                          dot={{ r: 4, fill: "#10b981" }}
-                        />
-                      </ComposedChart>
-                    </ResponsiveContainer>
-                  )}
+                <div className="w-full overflow-x-auto pb-2 scrollbar-thin">
+                  <div className="h-80 min-w-[540px] sm:min-w-full pt-2">
+                    {reportLoading ? (
+                      <div className="h-full flex items-center justify-center text-slate-500 text-sm font-bold">
+                        Memuat grafik analitik...
+                      </div>
+                    ) : !reportData || reportData.chartTrend.length === 0 ? (
+                      <div className="h-full flex items-center justify-center text-slate-400 text-sm font-medium">
+                        Belum ada data transaksi pada rentang tanggal ini.
+                      </div>
+                    ) : (
+                      <ResponsiveContainer width="100%" height="100%">
+                        <ComposedChart data={reportData.chartTrend} margin={{ top: 10, right: 10, left: -10, bottom: 25 }}>
+                          <defs>
+                            <linearGradient id="barOmzetGrad" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="0%" stopColor="#3b82f6" stopOpacity={0.9} />
+                              <stop offset="100%" stopColor="#1d4ed8" stopOpacity={0.8} />
+                            </linearGradient>
+                            <linearGradient id="areaLabaGrad" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="0%" stopColor="#10b981" stopOpacity={0.4} />
+                              <stop offset="100%" stopColor="#10b981" stopOpacity={0.0} />
+                            </linearGradient>
+                          </defs>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                          <XAxis dataKey="date" stroke="#64748b" fontSize={11} fontWeight={600} />
+                          <YAxis stroke="#64748b" fontSize={11} fontWeight={600} />
+                          <Tooltip
+                            formatter={(val: unknown) => `Rp ${Number(val).toLocaleString("id-ID")}`}
+                            contentStyle={{
+                              backgroundColor: "#0f172a",
+                              color: "#ffffff",
+                              borderRadius: "12px",
+                              border: "none",
+                              padding: "10px 14px",
+                              boxShadow: "0 10px 25px -5px rgba(0,0,0,0.3)",
+                            }}
+                          />
+                          <Legend wrapperStyle={{ paddingTop: "12px", fontWeight: 700 }} />
+                          <Bar
+                            dataKey="omzet"
+                            name="Omzet Total (Rp)"
+                            fill="url(#barOmzetGrad)"
+                            radius={[6, 6, 0, 0]}
+                            maxBarSize={45}
+                          />
+                          <Area
+                            type="monotone"
+                            dataKey="laba"
+                            name="Laba Kotor"
+                            stroke="#059669"
+                            strokeWidth={3}
+                            fill="url(#areaLabaGrad)"
+                          />
+                          <Line
+                            type="monotone"
+                            dataKey="laba"
+                            name="Keuntungan Bersih"
+                            stroke="#10b981"
+                            strokeWidth={3}
+                            dot={{ r: 4, fill: "#10b981" }}
+                          />
+                        </ComposedChart>
+                      </ResponsiveContainer>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -2353,6 +2360,9 @@ export default function AdminPage() {
                           </p>
                         </div>
                         <div className="flex flex-wrap items-center gap-2 text-[11px] font-bold">
+                          <span className="text-[10px] text-slate-500 font-semibold bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200 sm:hidden flex items-center gap-1">
+                            👉 Geser grafik ke samping
+                          </span>
                           <span className="px-2.5 py-1 bg-emerald-50 text-emerald-700 rounded-lg border border-emerald-200 flex items-center gap-1.5 shadow-2xs">
                             <span className="w-2 h-2 rounded-full bg-emerald-600 inline-block" />
                             Tunai: Rp {totalCashAllShifts.toLocaleString("id-ID")}
@@ -2365,42 +2375,54 @@ export default function AdminPage() {
                       </div>
                     </div>
 
-                    <div className="h-72 w-full pt-3">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <ComposedChart data={shiftChartData} margin={{ top: 15, right: 10, left: -5, bottom: 20 }}>
-                          <defs>
-                            <linearGradient id="shiftCashGrad" x1="0" y1="0" x2="0" y2="1">
-                              <stop offset="0%" stopColor="#10b981" stopOpacity={0.95} />
-                              <stop offset="100%" stopColor="#059669" stopOpacity={0.8} />
-                            </linearGradient>
-                            <linearGradient id="shiftQrisGrad" x1="0" y1="0" x2="0" y2="1">
-                              <stop offset="0%" stopColor="#818cf8" stopOpacity={0.95} />
-                              <stop offset="100%" stopColor="#4f46e5" stopOpacity={0.8} />
-                            </linearGradient>
-                            <linearGradient id="shiftTrendArea" x1="0" y1="0" x2="0" y2="1">
-                              <stop offset="0%" stopColor="#0ea5e9" stopOpacity={0.2} />
-                              <stop offset="100%" stopColor="#0ea5e9" stopOpacity={0.0} />
-                            </linearGradient>
-                          </defs>
-                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                          <XAxis
-                            dataKey="label"
-                            stroke="#64748b"
-                            fontSize={10}
-                            fontWeight={600}
-                            tickLine={false}
-                            interval={0}
-                            angle={-10}
-                            textAnchor="end"
-                          />
-                          <YAxis
-                            stroke="#64748b"
-                            fontSize={10}
-                            fontWeight={600}
-                            tickLine={false}
-                            axisLine={false}
-                            tickFormatter={(v) => `Rp ${(v / 1000).toLocaleString("id-ID")}k`}
-                          />
+                    <div className="w-full overflow-x-auto pb-2 scrollbar-thin">
+                      <div className="h-80 min-w-[560px] sm:min-w-full pt-3">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <ComposedChart data={shiftChartData} margin={{ top: 15, right: 15, left: -5, bottom: 25 }}>
+                            <defs>
+                              <linearGradient id="shiftCashGrad" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="0%" stopColor="#10b981" stopOpacity={0.95} />
+                                <stop offset="100%" stopColor="#059669" stopOpacity={0.8} />
+                              </linearGradient>
+                              <linearGradient id="shiftQrisGrad" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="0%" stopColor="#818cf8" stopOpacity={0.95} />
+                                <stop offset="100%" stopColor="#4f46e5" stopOpacity={0.8} />
+                              </linearGradient>
+                              <linearGradient id="shiftTrendArea" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="0%" stopColor="#0ea5e9" stopOpacity={0.2} />
+                                <stop offset="100%" stopColor="#0ea5e9" stopOpacity={0.0} />
+                              </linearGradient>
+                            </defs>
+                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                            <XAxis
+                              dataKey="label"
+                              tick={({ x, y, payload }: any) => {
+                                const item = shiftChartData[payload?.index];
+                                if (!item) return null;
+                                return (
+                                  <g transform={`translate(${x},${y})`}>
+                                    <text x={0} y={14} textAnchor="middle" fill="#1e293b" fontSize={10} fontWeight={800}>
+                                      {item.date}
+                                    </text>
+                                    <text x={0} y={27} textAnchor="middle" fill="#64748b" fontSize={9} fontWeight={600}>
+                                      {item.cashier.split(" ")[0]} ({item.shiftTag})
+                                    </text>
+                                  </g>
+                                );
+                              }}
+                              tickLine={false}
+                              axisLine={{ stroke: "#e2e8f0" }}
+                              height={38}
+                              interval={0}
+                            />
+                            <YAxis
+                              stroke="#64748b"
+                              fontSize={10}
+                              fontWeight={600}
+                              tickLine={false}
+                              axisLine={false}
+                              tickFormatter={(v) => `Rp ${(v / 1000).toLocaleString("id-ID")}k`}
+                            />
                           <Tooltip
                             content={({ active, payload }: any) => {
                               if (active && payload && payload.length) {
@@ -2471,6 +2493,7 @@ export default function AdminPage() {
                       </ResponsiveContainer>
                     </div>
                   </div>
+                </div>
 
                   {/* Donut Chart (4 Kolom): Rasio Pembayaran Tunai vs QRIS */}
                   <div className="lg:col-span-4 bg-white p-5 rounded-3xl border border-slate-200 shadow-xs flex flex-col justify-between">
