@@ -2700,11 +2700,11 @@ export default function AdminPage() {
       {/* MODAL 1: TAMBAH MASTER BARANG BARU (DENGAN INPUT KONTRAS TEGAS)            */}
       {/* ========================================================================= */}
       {showAddModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4 overflow-y-auto">
-          <div className="bg-white w-full max-w-2xl rounded-3xl shadow-2xl border border-slate-200 overflow-hidden my-8 animate-in fade-in zoom-in-95 duration-150">
-            <div className="bg-slate-900 text-white p-5 flex items-center justify-between">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-2 sm:p-4">
+          <div className="bg-white w-full max-w-2xl max-h-[92dvh] flex flex-col rounded-3xl shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            <div className="bg-slate-900 text-white p-4 sm:p-5 flex items-center justify-between shrink-0">
               <div>
-                <h3 className="font-extrabold text-lg">Tambah Master Barang Baru</h3>
+                <h3 className="font-extrabold text-base sm:text-lg">Tambah Master Barang Baru</h3>
                 <p className="text-xs text-slate-300">Input informasi produk & auto-generate barcode toko</p>
               </div>
               <button
@@ -2716,7 +2716,7 @@ export default function AdminPage() {
               </button>
             </div>
 
-            <form onSubmit={handleSubmitNewProduct} className="p-6 space-y-4">
+            <form onSubmit={handleSubmitNewProduct} className="p-4 sm:p-6 space-y-4 overflow-y-auto flex-1">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {/* Nama Produk */}
                 <div className="md:col-span-2">
@@ -3123,7 +3123,7 @@ export default function AdminPage() {
               </div>
 
               {/* Action Buttons */}
-              <div className="pt-4 flex items-center justify-end gap-3 border-t border-slate-200">
+              <div className="pt-4 flex items-center justify-end gap-3 border-t border-slate-200 shrink-0 pb-safe">
                 <button
                   type="button"
                   onClick={() => setShowAddModal(false)}
@@ -3148,11 +3148,11 @@ export default function AdminPage() {
       {/* MODAL 2: EDIT PRODUK LENGKAP                                              */}
       {/* ========================================================================= */}
       {editingProduct && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4 overflow-y-auto">
-          <div className="bg-white w-full max-w-xl rounded-3xl shadow-2xl border border-slate-200 overflow-hidden my-8 animate-in fade-in zoom-in-95 duration-150">
-            <div className="bg-amber-600 text-white p-5 flex items-center justify-between">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-2 sm:p-4">
+          <div className="bg-white w-full max-w-xl max-h-[92dvh] flex flex-col rounded-3xl shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            <div className="bg-amber-600 text-white p-4 sm:p-5 flex items-center justify-between shrink-0">
               <div>
-                <h3 className="font-extrabold text-lg">Edit Master Barang</h3>
+                <h3 className="font-extrabold text-base sm:text-lg">Edit Master Barang</h3>
                 <p className="text-xs text-amber-100">Perbarui nama, kategori, harga, atau stok barang</p>
               </div>
               <button
@@ -3164,7 +3164,7 @@ export default function AdminPage() {
               </button>
             </div>
 
-            <form onSubmit={handleUpdateProduct} className="p-6 space-y-4">
+            <form onSubmit={handleUpdateProduct} className="p-4 sm:p-6 space-y-4 overflow-y-auto flex-1">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="md:col-span-2 flex items-center justify-between bg-slate-50 px-3 py-2 rounded-xl border border-slate-200">
                   <div className="flex items-center gap-2">
@@ -3527,7 +3527,7 @@ export default function AdminPage() {
                 )}
               </div>
 
-              <div className="pt-4 flex items-center justify-end gap-3 border-t border-slate-200">
+              <div className="pt-4 flex items-center justify-end gap-3 border-t border-slate-200 shrink-0 pb-safe">
                 <button
                   type="button"
                   onClick={() => setEditingProduct(null)}
@@ -3831,9 +3831,9 @@ export default function AdminPage() {
       {/* MODAL 6: CETAK ULANG LABEL BARCODE SPESIFIK                               */}
       {/* ========================================================================= */}
       {selectedProductForBarcode && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
-          <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-            <div className="bg-slate-900 text-white p-4 flex items-center justify-between">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-2 sm:p-4">
+          <div className="bg-white w-full max-w-md max-h-[92dvh] flex flex-col rounded-3xl shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            <div className="bg-slate-900 text-white p-4 flex items-center justify-between shrink-0">
               <div>
                 <h3 className="font-extrabold text-sm">Cetak Stiker Barcode Produk</h3>
                 <p className="text-xs text-slate-300">{selectedProductForBarcode.name}</p>
@@ -3846,7 +3846,7 @@ export default function AdminPage() {
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <div className="p-4 space-y-3">
+            <div className="p-4 space-y-3 overflow-y-auto flex-1">
               {/* Jika mode BOTH, tampilkan switch label */}
               {selectedProductForBarcode.unitMode === "BOTH" && (
                 <div className="flex items-center justify-center gap-1.5 bg-slate-100 p-1 rounded-xl border border-slate-200">

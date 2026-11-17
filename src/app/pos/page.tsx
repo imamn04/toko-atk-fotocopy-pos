@@ -852,38 +852,38 @@ export default function PosPage() {
   ];
 
   return (
-    <div className="h-screen bg-slate-50 flex flex-col overflow-hidden select-none">
-      {/* Top Header Kasir - Bersih & Ritel Modern (Bukan AI Gemini Biru) */}
-      <header className="bg-white border-b border-slate-200 px-3 sm:px-6 py-2.5 sm:py-3 flex flex-wrap sm:flex-nowrap items-center justify-between gap-2 shadow-xs shrink-0">
-        <div className="flex items-center gap-2 sm:gap-3">
+    <div className="h-screen h-[100dvh] bg-slate-50 flex flex-col overflow-hidden select-none">
+      {/* Top Header Kasir - Bersih & Ritel Modern */}
+      <header className="bg-white border-b border-slate-200 px-2.5 sm:px-6 py-2 sm:py-3 flex items-center justify-between gap-1.5 sm:gap-2 shadow-xs shrink-0 pt-safe">
+        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
           <img
             src="/brand/logo-white-bg.png"
             alt="FOCUS MARAJA"
-            className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl object-contain bg-white border border-slate-200 p-0.5 shadow-xs shrink-0"
+            className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl object-contain bg-white border border-slate-200 p-0.5 shadow-xs shrink-0"
           />
-          <div>
-            <h1 className="text-sm sm:text-base font-black leading-tight tracking-tight text-slate-900 flex items-center gap-1.5">
+          <div className="min-w-0">
+            <h1 className="text-xs sm:text-base font-black leading-tight tracking-tight text-slate-900 flex items-center gap-1.5 truncate">
               FOCUS MARAJA POS
-              <span className="text-[10px] bg-slate-900 text-white px-2 py-0.5 rounded-full font-bold">
-                KASIR AKTIF
+              <span className="hidden xs:inline text-[9px] sm:text-[10px] bg-slate-900 text-white px-2 py-0.5 rounded-full font-bold">
+                KASIR
               </span>
             </h1>
-            <p className="text-[10px] sm:text-[11px] text-slate-500 hidden xs:block">
+            <p className="text-[10px] sm:text-[11px] text-slate-500 hidden sm:block truncate">
               Fotokopi • ATK • Studio • Terminal Kasir #01
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2 sm:gap-3 text-xs w-full sm:w-auto justify-end">
+        <div className="flex items-center gap-1 sm:gap-2 text-xs justify-end shrink-0">
           {/* Tombol Antrean Belanja / Hold Orders */}
           {heldOrders.length > 0 && (
             <button
               type="button"
               onClick={() => setShowHeldOrdersModal(true)}
-              className="flex items-center gap-1.5 bg-amber-50 text-amber-800 border border-amber-300 px-2.5 sm:px-3 py-1.5 rounded-xl font-bold hover:bg-amber-100 transition text-[11px]"
+              className="flex items-center gap-1 bg-amber-50 text-amber-800 border border-amber-300 px-2 sm:px-3 py-1.5 rounded-xl font-bold hover:bg-amber-100 transition text-[11px] shrink-0"
             >
               <PauseCircle className="w-3.5 h-3.5 shrink-0 text-amber-600" />
-              <span>{heldOrders.length} Ditahan</span>
+              <span>{heldOrders.length} <span className="hidden xs:inline">Ditahan</span></span>
             </button>
           )}
 
@@ -894,44 +894,30 @@ export default function PosPage() {
               await fetchActiveShift();
               setShowShiftCloseModal(true);
             }}
-            className="flex items-center gap-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-300 px-2.5 py-1.5 rounded-xl text-xs font-bold transition shadow-2xs active:scale-95 cursor-pointer"
+            className="flex items-center gap-1 sm:gap-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-300 px-2 sm:px-2.5 py-1.5 rounded-xl text-xs font-bold transition shadow-2xs active:scale-95 cursor-pointer shrink-0"
             title="Klik untuk melihat rekap laci uang atau tutup shift kasir (Z-Report)"
           >
             <Coins className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-            <span className="hidden sm:inline">
-              {activeShiftDb?.shiftType === "SHIFT_2"
-                ? "Shift 2"
-                : activeShiftDb?.shiftType === "FULL"
-                ? "Full Day"
-                : "Shift 1"}
-            </span>
-            <span className="text-emerald-300 hidden sm:inline">•</span>
             <span className="text-[11px] font-black text-emerald-800">
-              Laci: Rp {(activeShiftDb?.expectedCash || shiftInfo?.initialCashFloat || 100000).toLocaleString("id-ID")}
-            </span>
-            <span className="hidden md:inline text-[9px] bg-emerald-700 text-white px-1.5 py-0.5 rounded font-black uppercase">
-              Tutup Kasir
+              Rp {(activeShiftDb?.expectedCash || shiftInfo?.initialCashFloat || 100000).toLocaleString("id-ID")}
             </span>
           </button>
 
           {/* User Info */}
-          <div className="flex items-center gap-1.5 bg-slate-100 px-2.5 py-1.5 rounded-xl border border-slate-200">
+          <div className="hidden xs:flex items-center gap-1.5 bg-slate-100 px-2 py-1.5 rounded-xl border border-slate-200 shrink-0">
             <User className="w-3.5 h-3.5 text-slate-600 shrink-0" />
-            <span className="text-slate-800 font-bold text-xs truncate max-w-[80px] sm:max-w-[120px]">{currentUser?.name || "Kasir"}</span>
-            <span className="text-[9px] font-mono bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded uppercase font-bold hidden sm:inline">
-              {currentUser?.role || "KARYAWAN"}
-            </span>
+            <span className="text-slate-800 font-bold text-xs truncate max-w-[70px] sm:max-w-[120px]">{currentUser?.name || "Kasir"}</span>
           </div>
 
           {/* Backoffice link jika ADMIN */}
           {currentUser?.role === "ADMIN" && (
             <a
               href="/admin"
-              className="flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 px-2.5 sm:px-3 py-1.5 rounded-xl border border-slate-200 transition font-bold"
+              className="flex items-center gap-1 bg-slate-100 hover:bg-slate-200 text-slate-800 p-1.5 sm:px-3 sm:py-1.5 rounded-xl border border-slate-200 transition font-bold shrink-0"
               title="Kembali ke Backoffice Admin"
             >
               <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-              <span className="hidden sm:inline">Backoffice</span>
+              <span className="hidden sm:inline">Admin</span>
             </a>
           )}
 
@@ -939,11 +925,10 @@ export default function PosPage() {
           <button
             type="button"
             onClick={handleLogout}
-            className="flex items-center gap-1 text-rose-600 hover:text-rose-700 hover:bg-rose-50 px-2 sm:px-2.5 py-1.5 rounded-xl border border-rose-200 transition font-bold"
+            className="p-1.5 sm:px-2.5 sm:py-1.5 text-rose-600 hover:text-rose-700 hover:bg-rose-50 rounded-xl border border-rose-200 transition font-bold shrink-0"
             title="Keluar dari sesi kasir"
           >
             <LogOut className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Keluar</span>
           </button>
         </div>
       </header>
@@ -953,10 +938,10 @@ export default function PosPage() {
         {/* KOLOM KIRI: SCANNER, FILTER KATEGORI & GRID ETALASE BARANG */}
         <div className={`${mobileActiveTab === "catalog" ? "flex" : "hidden"} lg:flex flex-1 flex-col p-3 sm:p-4 gap-3 overflow-hidden border-r border-slate-200 bg-slate-50/50`}>
           {/* Top Bar: Barcode Scanner Input & Kamera */}
-          <div className="bg-white p-3 rounded-2xl border border-slate-200 shadow-xs shrink-0">
-            <form onSubmit={handleScanSubmit} className="flex flex-wrap sm:flex-nowrap items-center gap-2">
-              {/* Gambar / Badge Scanner Kasir */}
-              <div className="hidden md:flex items-center gap-2 bg-emerald-50 border border-emerald-200 px-3 py-2 rounded-xl shrink-0">
+          <div className="bg-white p-2.5 sm:p-3 rounded-2xl border border-slate-200 shadow-xs shrink-0">
+            <form onSubmit={handleScanSubmit} className="flex items-center gap-1.5 sm:gap-2">
+              {/* Gambar / Badge Scanner Kasir - Desktop Only */}
+              <div className="hidden lg:flex items-center gap-2 bg-emerald-50 border border-emerald-200 px-3 py-2 rounded-xl shrink-0">
                 <ScanBarcode className="w-5 h-5 text-emerald-600 animate-pulse" />
                 <div className="leading-tight">
                   <div className="text-[10px] font-extrabold text-emerald-900 uppercase">Scanner USB</div>
@@ -968,9 +953,9 @@ export default function PosPage() {
               </div>
 
               {/* Input Scan Barcode */}
-              <div className="relative flex-1 min-w-[240px]">
+              <div className="relative flex-1 min-w-0">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <ScanBarcode className="h-5 w-5 text-emerald-600" />
+                  <ScanBarcode className="h-4 w-4 sm:h-5 sm:w-5 text-emerald-600" />
                 </div>
                 <input
                   ref={barcodeInputRef}
@@ -1011,13 +996,13 @@ export default function PosPage() {
                       }
                     }
                   }}
-                  placeholder="Scan barcode USB atau ketik nama/kode barang... (Tekan Enter)"
-                  className="w-full pl-10 pr-20 py-2.5 bg-white border-2 border-slate-200 focus:border-emerald-600 rounded-xl text-slate-900 text-sm font-bold placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-100"
+                  placeholder="Scan barcode atau ketik nama/kode barang..."
+                  className="w-full pl-9 sm:pl-10 pr-12 sm:pr-20 py-2 sm:py-2.5 bg-white border-2 border-slate-200 focus:border-emerald-600 rounded-xl text-slate-900 text-sm font-bold placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-100"
                   autoComplete="off"
                   autoFocus
                 />
-                <div className="absolute inset-y-0 right-0 pr-2.5 flex items-center gap-1.5">
-                  <kbd className="text-[10px] font-mono font-bold bg-slate-100 text-slate-700 px-2 py-0.5 rounded border border-slate-300">
+                <div className="absolute inset-y-0 right-0 pr-2 flex items-center gap-1">
+                  <kbd className="hidden sm:inline text-[10px] font-mono font-bold bg-slate-100 text-slate-700 px-2 py-0.5 rounded border border-slate-300">
                     ENTER
                   </kbd>
                 </div>
@@ -1027,20 +1012,20 @@ export default function PosPage() {
               <button
                 type="button"
                 onClick={() => setShowCameraScanner(true)}
-                className="px-3.5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 transition shadow-xs shrink-0"
-                title="Buka Scanner Barcode menggunakan Kamera Laptop / HP"
+                className="px-2.5 sm:px-3.5 py-2 sm:py-2.5 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 transition shadow-xs shrink-0"
+                title="Buka Scanner Barcode menggunakan Kamera HP / Laptop"
               >
                 <Camera className="w-4 h-4" />
-                <span>Scan Kamera</span>
+                <span className="hidden xs:inline">Scan HP</span>
               </button>
 
               {/* Tombol Cari */}
               <button
                 type="submit"
-                className="px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 transition shadow-xs shrink-0"
+                className="px-3 sm:px-4 py-2 sm:py-2.5 bg-slate-900 hover:bg-slate-800 active:scale-95 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 transition shadow-xs shrink-0"
               >
                 <Search className="w-4 h-4" />
-                Cari
+                <span className="hidden sm:inline">Cari</span>
               </button>
             </form>
 
@@ -1351,43 +1336,51 @@ export default function PosPage() {
           </div>
 
           {/* Mobile Bottom Floating Checkout Bar (Hanya Muncul di Layar HP/Tablet) */}
-          <div className="lg:hidden p-3 bg-white border border-slate-200 rounded-2xl shadow-lg flex items-center justify-between shrink-0 z-20 pb-safe">
-            <div className="flex flex-col">
-              <span className="text-[11px] text-slate-500 font-bold">{totalItemCount} pcs ({cart.length} item)</span>
-              <span className="text-base font-black text-slate-900">Rp {totalAmount.toLocaleString("id-ID")}</span>
+          <div className="lg:hidden p-3 bg-white/95 backdrop-blur-xs border-t border-slate-200 shadow-xl flex items-center justify-between shrink-0 z-30 pb-safe sticky bottom-0 left-0 right-0">
+            <div className="flex flex-col min-w-0 pr-2">
+              <span className="text-[11px] text-slate-500 font-bold truncate">
+                {cart.length === 0 ? "Keranjang Kosong" : `${totalItemCount} pcs (${cart.length} item)`}
+              </span>
+              <span className="text-base font-black text-slate-900 truncate">
+                Rp {totalAmount.toLocaleString("id-ID")}
+              </span>
             </div>
             <button
               type="button"
               onClick={() => setMobileActiveTab("cart")}
-              className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-extrabold text-xs rounded-xl flex items-center gap-1.5 shadow-md shadow-emerald-500/25 transition"
+              className={`px-4 py-2.5 rounded-xl font-extrabold text-xs flex items-center gap-2 shadow-md transition active:scale-95 shrink-0 ${
+                cart.length > 0
+                  ? "bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-500/25 animate-pulse"
+                  : "bg-slate-800 hover:bg-slate-900 text-white"
+              }`}
             >
               <ShoppingCart className="w-4 h-4" />
-              <span>Lihat Keranjang & Bayar</span>
+              <span>Lihat Keranjang {cart.length > 0 && `(${cart.length})`}</span>
               <ArrowRight className="w-3.5 h-3.5" />
             </button>
           </div>
         </div>
 
         {/* KOLOM KANAN: KERANJANG KASIR AKTIF & TOTAL CHECKOUT */}
-        <div className={`${mobileActiveTab === "cart" ? "flex" : "hidden"} lg:flex w-full lg:w-[420px] xl:w-[460px] bg-white flex-col justify-between shrink-0 shadow-lg`}>
+        <div className={`${mobileActiveTab === "cart" ? "flex" : "hidden"} lg:flex w-full lg:w-[400px] xl:w-[450px] bg-white flex-col justify-between shrink-0 shadow-lg h-full overflow-hidden`}>
           {/* Header Keranjang Kasir */}
-          <div className="p-3 sm:p-4 border-b border-slate-200 bg-slate-50/75 flex items-center justify-between shrink-0">
-            <div className="flex items-center gap-2">
+          <div className="p-3 sm:p-4 border-b border-slate-200 bg-slate-50/90 flex items-center justify-between shrink-0">
+            <div className="flex items-center gap-2 min-w-0">
               {/* Tombol Kembali ke Katalog (Khusus Mobile/Tablet) */}
               <button
                 type="button"
                 onClick={() => setMobileActiveTab("catalog")}
-                className="lg:hidden p-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg flex items-center gap-1 text-xs font-bold transition mr-1"
+                className="lg:hidden px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl flex items-center gap-1.5 text-xs font-bold transition mr-1 shrink-0"
                 title="Kembali ke Etalase Barang"
               >
                 <ArrowLeft className="w-4 h-4" />
-                <span>Katalog</span>
+                <span>+ Barang</span>
               </button>
 
-              <ShoppingCart className="w-5 h-5 text-emerald-600" />
-              <div>
-                <h3 className="font-bold text-sm text-slate-800">Daftar Belanja</h3>
-                <span className="text-[11px] text-slate-500">
+              <ShoppingCart className="w-5 h-5 text-emerald-600 shrink-0 hidden xs:inline" />
+              <div className="min-w-0">
+                <h3 className="font-bold text-sm text-slate-800 truncate">Daftar Belanja</h3>
+                <span className="text-[11px] text-slate-500 truncate block">
                   {cart.length} item • {totalItemCount} total pcs
                 </span>
               </div>
@@ -1658,12 +1651,12 @@ export default function PosPage() {
 
       {/* MODAL POPUP PEMBAYARAN KASIR - CLEAN LIGHT RETAIL */}
       {showPaymentModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
-          <div className="bg-white w-full max-w-lg rounded-2xl shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-2 sm:p-4">
+          <div className="bg-white w-full max-w-lg max-h-[92dvh] flex flex-col rounded-2xl shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
             {/* Header Modal */}
-            <div className="bg-white border-b border-slate-200 p-5 flex items-center justify-between">
+            <div className="bg-white border-b border-slate-200 p-4 sm:p-5 flex items-center justify-between shrink-0">
               <div>
-                <h3 className="font-black text-lg text-slate-900">Proses Pembayaran Kasir</h3>
+                <h3 className="font-black text-base sm:text-lg text-slate-900">Proses Pembayaran Kasir</h3>
                 <p className="text-xs text-slate-500">Pilih metode &amp; masukkan jumlah uang tunai</p>
               </div>
               <button
@@ -1676,7 +1669,7 @@ export default function PosPage() {
             </div>
 
             {/* Body Modal */}
-            <div className="p-6 space-y-5">
+            <div className="p-4 sm:p-6 space-y-4 sm:space-y-5 overflow-y-auto flex-1">
               {/* Total Tagihan */}
               <div className="bg-emerald-50/70 p-4 rounded-xl border border-emerald-100 flex items-center justify-between">
                 <div>
@@ -1786,30 +1779,30 @@ export default function PosPage() {
                   </div>
 
                   {dynamicQrisQrUrl ? (
-                    <div className="bg-white p-3 rounded-2xl border-2 border-slate-300 shadow-md">
+                    <div className="bg-white p-2.5 sm:p-3 rounded-2xl border-2 border-slate-300 shadow-md">
                       <img
                         src={dynamicQrisQrUrl}
                         alt="QRIS Dinamis"
-                        className="w-56 h-56 object-contain"
+                        className="w-44 h-44 sm:w-56 sm:h-56 object-contain"
                       />
                       <div className="mt-1 text-[11px] font-black text-slate-800">
                         Total Tagihan: Rp {totalAmount.toLocaleString("id-ID")}
                       </div>
                     </div>
                   ) : storeSetting?.qrisImageUrl ? (
-                    <div className="bg-white p-3 rounded-2xl border-2 border-slate-300 shadow-md">
+                    <div className="bg-white p-2.5 sm:p-3 rounded-2xl border-2 border-slate-300 shadow-md">
                       <img
                         src={storeSetting.qrisImageUrl}
                         alt="QRIS Merchant Toko"
-                        className="w-56 h-56 object-contain"
+                        className="w-44 h-44 sm:w-56 sm:h-56 object-contain"
                       />
                       <div className="mt-1 text-[11px] font-black text-slate-800">
                         {storeSetting.storeName || "FOCUS MARAJA"} • Rp {totalAmount.toLocaleString("id-ID")}
                       </div>
                     </div>
                   ) : (
-                    <div className="w-52 h-52 bg-slate-200/80 rounded-2xl flex flex-col items-center justify-center p-4 border border-dashed border-slate-400">
-                      <QrCodeIcon className="w-12 h-12 text-slate-400 mb-2" />
+                    <div className="w-44 h-44 sm:w-52 sm:h-52 bg-slate-200/80 rounded-2xl flex flex-col items-center justify-center p-4 border border-dashed border-slate-400">
+                      <QrCodeIcon className="w-10 h-10 sm:w-12 sm:h-12 text-slate-400 mb-2" />
                       <p className="text-xs font-bold text-slate-700">QRIS Toko Belum Diupload</p>
                       <p className="text-[10px] text-slate-500 mt-1">
                         Upload barcode QRIS Anda di menu Backoffice Admin &gt; Pengaturan Toko &amp; QRIS.
@@ -1838,11 +1831,11 @@ export default function PosPage() {
             </div>
 
             {/* Footer Modal */}
-            <div className="p-4 bg-slate-50 border-t border-slate-200 flex items-center justify-end gap-3">
+            <div className="p-3 sm:p-4 bg-slate-50 border-t border-slate-200 flex items-center justify-end gap-3 shrink-0 pb-safe">
               <button
                 type="button"
                 onClick={() => setShowPaymentModal(false)}
-                className="px-4 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-200 rounded-xl transition"
+                className="px-4 py-2 sm:py-2.5 text-xs sm:text-sm font-semibold text-slate-600 hover:bg-slate-200 rounded-xl transition"
               >
                 Batal
               </button>
@@ -1850,7 +1843,7 @@ export default function PosPage() {
                 type="button"
                 onClick={handleProcessCheckout}
                 disabled={isProcessingCheckout || (paymentMethod === "CASH" && cashPaidInput < totalAmount)}
-                className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold text-sm rounded-xl shadow-md transition flex items-center gap-2"
+                className="px-5 sm:px-6 py-2 sm:py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold text-xs sm:text-sm rounded-xl shadow-md transition flex items-center gap-2"
               >
                 {isProcessingCheckout ? (
                   <span>Menyimpan...</span>
@@ -1868,9 +1861,9 @@ export default function PosPage() {
 
       {/* MODAL DAFTAR TRANSAKSI DITAHAN (HOLD ORDERS) */}
       {showHeldOrdersModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
-          <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-            <div className="bg-amber-600 text-white p-4 flex items-center justify-between">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-2 sm:p-4">
+          <div className="bg-white w-full max-w-md max-h-[90dvh] flex flex-col rounded-2xl shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            <div className="bg-amber-600 text-white p-4 flex items-center justify-between shrink-0">
               <div className="flex items-center gap-2">
                 <PauseCircle className="w-5 h-5" />
                 <h3 className="font-bold text-sm">Daftar Antrean Transaksi Ditahan</h3>
@@ -1884,7 +1877,7 @@ export default function PosPage() {
               </button>
             </div>
 
-            <div className="p-4 max-h-80 overflow-y-auto divide-y divide-slate-100">
+            <div className="p-4 overflow-y-auto flex-1 divide-y divide-slate-100">
               {heldOrders.length === 0 ? (
                 <div className="text-center py-6 text-slate-400 text-xs">Tidak ada transaksi yang ditahan.</div>
               ) : (
@@ -1931,10 +1924,10 @@ export default function PosPage() {
 
       {/* MODAL STRUK SETELAH CHECKOUT SUKSES */}
       {completedTx && (
-        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-xs flex items-center justify-center z-50 p-4 overflow-y-auto">
-          <div className="bg-slate-100 w-full max-w-sm rounded-3xl shadow-2xl border border-slate-300 overflow-hidden my-4 animate-in fade-in zoom-in-95 duration-150">
+        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-xs flex items-center justify-center z-50 p-2 sm:p-4 overflow-y-auto">
+          <div className="bg-slate-100 w-full max-w-sm rounded-3xl shadow-2xl border border-slate-300 overflow-hidden my-auto max-h-[94dvh] flex flex-col animate-in fade-in zoom-in-95 duration-150">
             {/* Header Notifikasi Berhasil */}
-            <div className="bg-emerald-600 text-white py-3 px-4 text-center flex items-center justify-center gap-2 shadow-xs">
+            <div className="bg-emerald-600 text-white py-2.5 px-4 text-center flex items-center justify-center gap-2 shadow-xs shrink-0">
               <CheckCircle2 className="w-5 h-5 text-emerald-100 shrink-0" />
               <span className="font-extrabold text-sm tracking-wide">
                 Transaksi Berhasil & Struk Dicetak!
@@ -1942,7 +1935,7 @@ export default function PosPage() {
             </div>
 
             {/* Mockup Kertas Struk Fisik Thermal */}
-            <div className="p-4 flex justify-center">
+            <div className="p-3 sm:p-4 flex justify-center overflow-y-auto flex-1">
               <div className="w-full bg-white p-5 rounded-2xl shadow-md border border-slate-200 text-slate-800 font-mono text-[11px] leading-relaxed relative">
                 {/* Efek Gerigi Kertas Kasir (Top Decorative Notch) */}
                 <div className="text-center pb-2 border-b-2 border-slate-800">
@@ -2051,7 +2044,7 @@ export default function PosPage() {
             </div>
 
             {/* Tombol Aksi Kasir */}
-            <div className="p-4 bg-white border-t border-slate-200 flex flex-col gap-2">
+            <div className="p-3 sm:p-4 bg-white border-t border-slate-200 flex flex-col gap-2 shrink-0 pb-safe">
               <button
                 type="button"
                 onClick={handlePrintReceipt}
@@ -2069,7 +2062,7 @@ export default function PosPage() {
                   setWaPhoneInput("");
                   focusScanner();
                 }}
-                className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white text-sm font-extrabold rounded-xl flex items-center justify-center gap-2 shadow-md transition cursor-pointer"
+                className="w-full py-2.5 sm:py-3 bg-blue-600 hover:bg-blue-700 text-white text-xs sm:text-sm font-extrabold rounded-xl flex items-center justify-center gap-2 shadow-md transition cursor-pointer"
               >
                 <span>Transaksi Baru (Enter)</span>
                 <ArrowRight className="w-4 h-4" />
