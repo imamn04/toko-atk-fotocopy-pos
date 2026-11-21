@@ -47,3 +47,4 @@ echo "[3/3] Menghapus backup lokal yang berusia lebih dari 14 hari..."
 find "$BACKUP_DIR" -type f -name "db_focusmaraja_*.sql.gz" -mtime +14 -delete || true
 
 echo "✓ Backup berhasil dikirim ke Telegram!"
+

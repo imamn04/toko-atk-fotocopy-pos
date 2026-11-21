@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSessionUser } from "@/lib/auth";
+import { sendShiftCloseReport } from "@/lib/telegram";
 
 // GET: Ambil status shift kasir aktif saat ini dengan kalkulasi transaksi riil dari database
 export async function GET() {
@@ -226,6 +227,27 @@ export async function POST(req: Request) {
           closedAt: new Date(),
         },
       });
+
+      // Kirim Notifikasi Z-Report Instan ke Telegram Bot Owner
+      try {
+        await sendShiftCloseReport({
+          shiftId: closedShift.id,
+          cashierName: closedShift.cashierName,
+          shiftType: closedShift.shiftType,
+          openedAt: closedShift.openedAt.toISOString(),
+          closedAt: (closedShift.closedAt || new Date()).toISOString(),
+          openingFloat: closedShift.openingFloat,
+          totalCashSales: closedShift.totalCashSales,
+          totalQrisSales: closedShift.totalQrisSales,
+          totalTransactions: closedShift.totalTransactions,
+          expectedCash,
+          closingCash: parsedClosingCash,
+          discrepancy,
+          notes: closedShift.notes,
+        });
+      } catch (tgErr) {
+        console.error("Gagal mengirim laporan Telegram shift:", tgErr);
+      }
 
       return NextResponse.json({
         success: true,
