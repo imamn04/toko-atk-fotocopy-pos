@@ -38,6 +38,7 @@ import {
   Lock,
   Layers,
   Sparkles,
+  Clock,
   QrCode as QrCodeIcon
 } from "lucide-react";
 import QRCode from "qrcode";
@@ -267,6 +268,21 @@ export default function PosPage() {
   // Notifikasi Toast
   const [statusMessage, setStatusMessage] = useState<{ text: string; type: "success" | "error" | "info" } | null>(null);
 
+  // Custom Modal Konfirmasi Interaktif (Pengganti window.confirm)
+  const [confirmDialog, setConfirmDialog] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    confirmText?: string;
+    cancelText?: string;
+    variant?: "danger" | "warning" | "primary";
+    onConfirm: () => void;
+  } | null>(null);
+
+  // Custom Modal Tahan Transaksi / Catatan Antrean (Pengganti window.prompt)
+  const [showHoldModal, setShowHoldModal] = useState(false);
+  const [holdNoteInput, setHoldNoteInput] = useState("");
+
   // Modal Pembayaran
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<"CASH" | "QRIS" | "TRANSFER">("CASH");
@@ -433,23 +449,34 @@ export default function PosPage() {
 
   // Auto-focus scanner
   const focusScanner = useCallback(() => {
-    if (!showPaymentModal && !completedTx && !showHeldOrdersModal && barcodeInputRef.current) {
+    if (
+      !showPaymentModal &&
+      !completedTx &&
+      !showHeldOrdersModal &&
+      !showHoldModal &&
+      !confirmDialog?.isOpen &&
+      barcodeInputRef.current
+    ) {
       barcodeInputRef.current.focus();
     }
-  }, [showPaymentModal, completedTx, showHeldOrdersModal]);
+  }, [showPaymentModal, completedTx, showHeldOrdersModal, showHoldModal, confirmDialog?.isOpen]);
 
-  // Fitur Tahan Transaksi (Hold Cart)
+  // Fitur Tahan Transaksi (Hold Cart) - Modern Sheet Dialog
   const handleHoldCurrentOrder = useCallback(() => {
     if (cart.length === 0) {
       notify("Keranjang masih kosong, tidak ada yang perlu ditahan.", "info");
       return;
     }
+    setHoldNoteInput("");
+    setShowHoldModal(true);
+  }, [cart.length, notify]);
 
-    const note = prompt("Beri catatan antrean (misal: Pelanggan Baju Biru / Pak Budi):") || `Antrean #${heldOrders.length + 1}`;
+  const confirmHoldOrder = () => {
+    const finalNote = holdNoteInput.trim() || `Antrean #${heldOrders.length + 1}`;
     const newHold: HeldOrder = {
       id: "HOLD-" + Date.now(),
       timestamp: new Date().toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }),
-      customerNote: note,
+      customerNote: finalNote,
       items: [...cart],
       discount: discountAmount,
     };
@@ -458,9 +485,11 @@ export default function PosPage() {
     setCart([]);
     setDiscountInputVal(0);
     setDiscountMode("rp");
-    notify(`Transaksi berhasil ditahan: "${note}". Keranjang siap untuk pelanggan berikutnya!`, "info");
+    setShowHoldModal(false);
+    setHoldNoteInput("");
+    notify(`Transaksi ditahan: "${finalNote}". Keranjang siap untuk pelanggan berikutnya!`, "info");
     focusScanner();
-  }, [cart, heldOrders.length, discountAmount, notify, focusScanner]);
+  };
 
   useEffect(() => {
     focusScanner();
@@ -470,6 +499,8 @@ export default function PosPage() {
         !showPaymentModal &&
         !completedTx &&
         !showHeldOrdersModal &&
+        !showHoldModal &&
+        !confirmDialog?.isOpen &&
         barcodeInputRef.current &&
         !target.closest("button") &&
         !target.closest("input") &&
@@ -482,6 +513,27 @@ export default function PosPage() {
     const handleKeyDown = (e: KeyboardEvent) => {
       const key = e.key;
       const code = e.code;
+
+      // 0. Intercept tombol Enter / Escape saat modal custom terbuka
+      if (confirmDialog?.isOpen) {
+        if (key === "Escape") {
+          e.preventDefault();
+          setConfirmDialog(null);
+          return;
+        }
+        if (key === "Enter") {
+          e.preventDefault();
+          confirmDialog.onConfirm();
+          return;
+        }
+      }
+      if (showHoldModal) {
+        if (key === "Escape") {
+          e.preventDefault();
+          setShowHoldModal(false);
+          return;
+        }
+      }
 
       // 1. Tangani tombol fungsi F-Keys (F2, F4, F8, F9, F12) & Escape
       if (key === "F2" || code === "F2") {
@@ -694,16 +746,25 @@ export default function PosPage() {
     notify(`Beralih ke satuan ${targetUnit} (${item.product.name})`, "info");
   };
 
-  // Kosongkan keranjang
+  // Kosongkan keranjang - Menggunakan Custom Modal
   const clearCart = () => {
     if (cart.length === 0) return;
-    if (confirm("Apakah yakin ingin mengosongkan keranjang belanja kasir?")) {
-      setCart([]);
-      setDiscountInputVal(0);
-      setDiscountMode("rp");
-      notify("Keranjang belanja dikosongkan.", "info");
-      focusScanner();
-    }
+    setConfirmDialog({
+      isOpen: true,
+      title: "Kosongkan Keranjang Belanja?",
+      message: `Semua ${cart.length} barang yang sudah dimasukkan akan dihapus dari antrean kasir saat ini.`,
+      confirmText: "Ya, Kosongkan Keranjang",
+      cancelText: "Batal",
+      variant: "danger",
+      onConfirm: () => {
+        setCart([]);
+        setDiscountInputVal(0);
+        setDiscountMode("rp");
+        setConfirmDialog(null);
+        notify("Keranjang belanja telah dikosongkan.", "info");
+        focusScanner();
+      },
+    });
   };
 
   // Handler Scan Barcode (Dipakai bersama oleh USB Scanner & Kamera)
@@ -746,21 +807,33 @@ export default function PosPage() {
 
   handleBarcodeLookupRef.current = handleBarcodeLookup;
 
-  // Pulihkan Transaksi yang Ditahan
+  // Pulihkan Transaksi yang Ditahan - Menggunakan Custom Modal
   const handleRestoreHeldOrder = (order: HeldOrder) => {
+    const restoreAction = () => {
+      setCart(order.items);
+      setDiscountInputVal(order.discount || 0);
+      setDiscountMode("rp");
+      setHeldOrders((prev) => prev.filter((o) => o.id !== order.id));
+      setShowHeldOrdersModal(false);
+      setConfirmDialog(null);
+      notify(`Transaksi "${order.customerNote}" telah dipulihkan ke keranjang.`, "success");
+      focusScanner();
+    };
+
     if (cart.length > 0) {
-      if (!confirm("Keranjang saat ini berisi barang. Apakah ingin menimpa dengan transaksi yang dipulihkan?")) {
-        return;
-      }
+      setConfirmDialog({
+        isOpen: true,
+        title: "Timpa Keranjang Belanja?",
+        message: `Keranjang saat ini berisi ${cart.length} barang. Apakah Anda ingin menimpanya dengan transaksi antrean "${order.customerNote}"?`,
+        confirmText: "Ya, Timpa Keranjang",
+        cancelText: "Batal",
+        variant: "warning",
+        onConfirm: restoreAction,
+      });
+      return;
     }
 
-    setCart(order.items);
-    setDiscountInputVal(order.discount || 0);
-    setDiscountMode("rp");
-    setHeldOrders((prev) => prev.filter((o) => o.id !== order.id));
-    setShowHeldOrdersModal(false);
-    notify(`Transaksi "${order.customerNote}" telah dipulihkan ke keranjang.`, "success");
-    focusScanner();
+    restoreAction();
   };
 
   // Proses Checkout Transaksi (Atomic Transaction di API)
@@ -826,13 +899,22 @@ export default function PosPage() {
     }
   };
 
-  // Logout
-  const handleLogout = async () => {
-    if (confirm("Apakah Anda yakin ingin keluar dari sistem kasir?")) {
-      await fetch("/api/auth/logout", { method: "POST" });
-      router.push("/login");
-      router.refresh();
-    }
+  // Logout - Menggunakan Custom Modal
+  const handleLogout = () => {
+    setConfirmDialog({
+      isOpen: true,
+      title: "Keluar dari Sistem Kasir?",
+      message: "Pastikan Anda sudah menutup shift atau menyetor kas jika sesi bertugas sudah selesai.",
+      confirmText: "Keluar (Logout)",
+      cancelText: "Tetap di Kasir",
+      variant: "danger",
+      onConfirm: async () => {
+        setConfirmDialog(null);
+        await fetch("/api/auth/logout", { method: "POST" });
+        router.push("/login");
+        router.refresh();
+      },
+    });
   };
 
   // Cetak Struk Belanja Kasir
@@ -2116,6 +2198,201 @@ export default function PosPage() {
           handleLogout();
         }}
       />
+
+      {/* ========================================================================= */}
+      {/* CUSTOM MODAL: TAHAN TRANSAKSI (HOLD CART) - PENGGANTI PROMPT BROWSER     */}
+      {/* ========================================================================= */}
+      {showHoldModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-3 sm:p-4 animate-in fade-in duration-150">
+          <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl border border-slate-200 overflow-hidden animate-in zoom-in-95 duration-150 p-5 sm:p-6 flex flex-col gap-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 bg-amber-500/10 text-amber-600 rounded-xl">
+                  <PauseCircle className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-black text-base text-slate-900">Tahan Transaksi (Hold Cart)</h3>
+                  <p className="text-xs text-slate-500">Simpan antrean belanjaan pelanggan saat ini</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowHoldModal(false);
+                  focusScanner();
+                }}
+                className="text-slate-400 hover:text-slate-700 p-1 rounded-xl transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div>
+              <label className="block text-xs font-black text-slate-700 uppercase tracking-wider mb-1.5">
+                Beri Nama / Penanda Antrean:
+              </label>
+              <input
+                type="text"
+                value={holdNoteInput}
+                onChange={(e) => setHoldNoteInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") confirmHoldOrder();
+                  if (e.key === "Escape") {
+                    setShowHoldModal(false);
+                    focusScanner();
+                  }
+                }}
+                placeholder={`Misal: Antrean #${heldOrders.length + 1} / Pak Budi / Pelanggan Baju Biru`}
+                className="w-full px-3.5 py-2.5 text-sm font-bold text-slate-900 bg-slate-50 border-2 border-slate-300 focus:border-emerald-600 focus:bg-white rounded-xl focus:outline-none focus:ring-4 focus:ring-emerald-100 transition shadow-2xs"
+                autoFocus
+              />
+
+              {/* Quick Tags / Preset Chips */}
+              <div className="mt-2.5">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1.5">
+                  Preset Cepat (Klik untuk memilih):
+                </span>
+                <div className="flex flex-wrap gap-1.5">
+                  {[
+                    "Pelanggan Baju Biru",
+                    "Pak Budi",
+                    "Ibu Guru",
+                    "Jilid Skripsi",
+                    "Ambil Uang ATM",
+                    "Tunggu Teman",
+                  ].map((chip) => (
+                    <button
+                      key={chip}
+                      type="button"
+                      onClick={() => setHoldNoteInput(chip)}
+                      className="px-2.5 py-1 bg-slate-100 hover:bg-emerald-50 hover:text-emerald-800 hover:border-emerald-300 border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 transition active:scale-95 cursor-pointer"
+                    >
+                      {chip}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="pt-2 flex items-center justify-end gap-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowHoldModal(false);
+                  focusScanner();
+                }}
+                className="px-4 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl transition cursor-pointer"
+              >
+                Batal (Esc)
+              </button>
+              <button
+                type="button"
+                onClick={confirmHoldOrder}
+                className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-extrabold rounded-xl shadow-md shadow-emerald-600/25 flex items-center gap-1.5 transition active:scale-95 cursor-pointer"
+              >
+                <PauseCircle className="w-4 h-4" />
+                <span>Simpan Antrean (Enter)</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* CUSTOM MODAL: KONFIRMASI AKSI (PENGGANTI CONFIRM BROWSER)                 */}
+      {/* ========================================================================= */}
+      {confirmDialog?.isOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-3 sm:p-4 animate-in fade-in duration-150">
+          <div className="bg-white w-full max-w-sm rounded-3xl shadow-2xl border border-slate-200 overflow-hidden animate-in zoom-in-95 duration-150 p-6 text-center flex flex-col items-center">
+            <div
+              className={`w-14 h-14 rounded-2xl flex items-center justify-center mb-3 shadow-inner ${
+                confirmDialog.variant === "danger"
+                  ? "bg-rose-100 text-rose-600"
+                  : confirmDialog.variant === "warning"
+                  ? "bg-amber-100 text-amber-600"
+                  : "bg-emerald-100 text-emerald-600"
+              }`}
+            >
+              {confirmDialog.variant === "danger" ? (
+                <Trash2 className="w-7 h-7" />
+              ) : confirmDialog.variant === "warning" ? (
+                <AlertTriangle className="w-7 h-7" />
+              ) : (
+                <CheckCircle2 className="w-7 h-7" />
+              )}
+            </div>
+
+            <h3 className="text-base sm:text-lg font-black text-slate-900 leading-snug">
+              {confirmDialog.title}
+            </h3>
+
+            <p className="text-xs text-slate-500 mt-2 leading-relaxed max-w-xs">
+              {confirmDialog.message}
+            </p>
+
+            <div className="mt-6 grid grid-cols-2 gap-2.5 w-full">
+              <button
+                type="button"
+                onClick={() => {
+                  setConfirmDialog(null);
+                  focusScanner();
+                }}
+                className="w-full py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition cursor-pointer"
+              >
+                {confirmDialog.cancelText || "Batal (Esc)"}
+              </button>
+
+              <button
+                type="button"
+                autoFocus
+                onClick={() => {
+                  confirmDialog.onConfirm();
+                }}
+                className={`w-full py-2.5 text-white text-xs font-extrabold rounded-xl shadow-md transition active:scale-95 cursor-pointer ${
+                  confirmDialog.variant === "danger"
+                    ? "bg-rose-600 hover:bg-rose-700 shadow-rose-600/25"
+                    : confirmDialog.variant === "warning"
+                    ? "bg-amber-600 hover:bg-amber-700 shadow-amber-600/25"
+                    : "bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/25"
+                }`}
+              >
+                {confirmDialog.confirmText || "Lanjutkan (Enter)"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* FLOATING TOAST NOTIFICATION PILL */}
+      {statusMessage && (
+        <div className="fixed top-4 right-4 z-50 animate-in slide-in-from-top-3 fade-in duration-150">
+          <div
+            className={`px-4 py-2.5 rounded-2xl shadow-xl border flex items-center gap-2.5 text-xs font-extrabold ${
+              statusMessage.type === "success"
+                ? "bg-emerald-950 text-emerald-100 border-emerald-700/80 shadow-emerald-950/40"
+                : statusMessage.type === "error"
+                ? "bg-rose-950 text-rose-100 border-rose-700/80 shadow-rose-950/40"
+                : "bg-slate-900 text-slate-100 border-slate-700 shadow-slate-950/40"
+            }`}
+          >
+            {statusMessage.type === "success" ? (
+              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+            ) : statusMessage.type === "error" ? (
+              <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
+            ) : (
+              <Sparkles className="w-4 h-4 text-cyan-400 shrink-0" />
+            )}
+            <span className="leading-snug">{statusMessage.text}</span>
+            <button
+              type="button"
+              onClick={() => setStatusMessage(null)}
+              className="text-slate-400 hover:text-white p-0.5 ml-1"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
