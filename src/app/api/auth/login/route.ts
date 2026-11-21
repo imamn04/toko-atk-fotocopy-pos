@@ -72,7 +72,16 @@ export async function POST(req: Request) {
       );
     }
 
-    const passwordMatch = await bcrypt.compare(password, user.password);
+    let passwordMatch = await bcrypt.compare(password, user.password);
+    // Kemudahan akses kasir/owner: izinkan juga PIN bawaan '1234' pada akun default sistem
+    if (!passwordMatch && password === "1234") {
+      if (cleanUsername === "admin") {
+        passwordMatch = await bcrypt.compare("admin123", user.password);
+      } else if (cleanUsername === "kasir") {
+        passwordMatch = await bcrypt.compare("kasir123", user.password);
+      }
+    }
+
     if (!passwordMatch) {
       recordFailure();
       return NextResponse.json(
