@@ -128,7 +128,7 @@ cat > /etc/nginx/sites-available/pos-atk <<EOF
 server {
     listen 80 default_server;
     listen [::]:80 default_server;
-    server_name _;
+    server_name focusmaraja.my.id www.focusmaraja.my.id _;
 
     client_max_body_size 50M;
 
@@ -174,19 +174,41 @@ sleep 10
 docker compose ps
 
 SERVER_IP=$(curl -s https://api.ipify.org || hostname -I | awk '{print $1}')
+DOMAIN="focusmaraja.my.id"
+
+# Cek apakah domain focusmaraja.my.id sudah mengarah ke server ini
+echo -e "\n${BLUE}Memeriksa status DNS domain ${DOMAIN}...${NC}"
+RESOLVED_IP=$(getent ahosts "$DOMAIN" 2>/dev/null | awk '{print $1}' | head -n 1 || true)
+SSL_ACTIVE=false
+if [ "$RESOLVED_IP" = "$SERVER_IP" ]; then
+  echo -e "${GREEN}✓ Domain ${DOMAIN} sudah terhubung ke IP ${SERVER_IP}. Mengaktifkan SSL HTTPS...${NC}"
+  certbot --nginx -d "$DOMAIN" -d "www.$DOMAIN" --non-interactive --agree-tos --register-unsafely-without-email --redirect || true
+  SSL_ACTIVE=true
+else
+  echo -e "${YELLOW}Domain ${DOMAIN} belum diarahkan ke IP ${SERVER_IP} (IP terdeteksi: ${RESOLVED_IP:-belum ada}).${NC}"
+fi
 
 echo -e "\n${CYAN}=====================================================================${NC}"
 echo -e "${GREEN}🎉 DEPLOYMENT BERHASIL! APLIKASI SUDAH AKTIF DI VPS!${NC}"
 echo -e "${CYAN}=====================================================================${NC}"
-echo -e "Aplikasi dapat langsung diakses melalui browser Anda di:"
-echo -e "👉 ${YELLOW}http://${SERVER_IP}${NC} (Melalui Nginx Port 80)"
+echo -e "Aplikasi dapat diakses melalui:"
+if [ "$SSL_ACTIVE" = true ]; then
+  echo -e "👉 ${GREEN}https://${DOMAIN}${NC} (SSL HTTPS Aman)"
+else
+  echo -e "👉 ${YELLOW}http://${DOMAIN}${NC} (Setelah DNS diarahkan)"
+  echo -e "👉 ${YELLOW}http://${SERVER_IP}${NC} (Akses langsung via IP Server)"
+fi
 echo -e "👉 ${YELLOW}http://${SERVER_IP}:${APP_PORT}${NC} (Direct Port)"
 echo ""
 echo -e "Akun Login Default (Otomatis Dibuat):"
 echo -e "👤 Admin / Owner:  ${GREEN}admin${NC}     | Password: ${GREEN}admin123${NC}"
 echo -e "👤 Kasir Toko:     ${GREEN}kasir${NC}     | Password: ${GREEN}kasir123${NC}"
 echo ""
-echo -e "Panduan Menghubungkan Domain & SSL Gratis (Opsional):"
-echo -e "1. Arahkan DNS Record A domain Anda ke IP: ${CYAN}${SERVER_IP}${NC}"
-echo -e "2. Jalankan perintah: ${CYAN}certbot --nginx -d namadomain.com${NC}"
+echo -e "Langkah Terakhir Menghubungkan Domain focusmaraja.my.id:"
+echo -e "1. Di panel domain Anda (Cloudflare / Niagahoster / Domainesia):"
+echo -e "   - Buat DNS Record: Type 'A', Name '@', Value '${SERVER_IP}'"
+echo -e "   - Buat DNS Record: Type 'A', Name 'www', Value '${SERVER_IP}'"
+echo -e "2. Setelah DNS tersimpan, aktifkan SSL HTTPS di VPS dengan perintah:"
+echo -e "   ${CYAN}certbot --nginx -d focusmaraja.my.id -d www.focusmaraja.my.id${NC}"
 echo -e "${CYAN}=====================================================================${NC}"
+
