@@ -24,8 +24,8 @@ fi
 
 APP_DIR="/var/www/pos-atk"
 REPO_URL="https://github.com/imamn04/toko-atk-fotocopy-pos.git"
-SSH_PORT="20175"
-APP_PORT="8087"
+SSH_PORT="${SSH_PORT:-22}"
+APP_PORT="${APP_PORT:-8087}"
 
 # 2. ALOKASI SWAP MEMORY 4GB (Mencegah VPS RAM kecil mengalami Out-Of-Memory saat build)
 echo -e "\n${BLUE}[1/7] Memeriksa & Mengalokasikan Swap Memory 4GB...${NC}"

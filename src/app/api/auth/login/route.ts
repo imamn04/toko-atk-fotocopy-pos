@@ -72,16 +72,7 @@ export async function POST(req: Request) {
       );
     }
 
-    let passwordMatch = await bcrypt.compare(password, user.password);
-    // Kemudahan akses kasir/owner: izinkan juga PIN bawaan '1234' serta 'admin123'/'kasir123' pada akun bawaan
-    if (!passwordMatch) {
-      if (
-        (cleanUsername === "admin" || cleanUsername === "kasir") &&
-        (password === "1234" || password === "admin123" || password === "kasir123")
-      ) {
-        passwordMatch = true;
-      }
-    }
+    const passwordMatch = await bcrypt.compare(password, user.password);
 
     if (!passwordMatch) {
       recordFailure();

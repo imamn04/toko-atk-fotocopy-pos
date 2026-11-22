@@ -43,8 +43,10 @@ services:
       HOSTNAME: "0.0.0.0"
       DATABASE_URL: mysql://pos_user:${DB_PASSWORD}@db:3306/devos_pos
       NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID}
     ports:
-      - "${APP_PORT:-8087}:3000"
+      - "127.0.0.1:${APP_PORT:-8087}:3000"
     networks:
       - pos_network
 

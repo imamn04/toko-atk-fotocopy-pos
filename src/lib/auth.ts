@@ -1,9 +1,16 @@
 import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
 
-const SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || process.env.NEXTAUTH_SECRET || "super-secure-secret-key-toko-atk-pos-2026-xyz"
-);
+const jwtSecretKey =
+  process.env.JWT_SECRET ||
+  process.env.NEXTAUTH_SECRET ||
+  (process.env.NODE_ENV === "production"
+    ? (() => {
+        throw new Error("FATAL: JWT_SECRET atau NEXTAUTH_SECRET wajib didefinisikan di environment production (.env)!");
+      })()
+    : "dev-only-secret-key-do-not-use-in-production-2026");
+
+const SECRET = new TextEncoder().encode(jwtSecretKey);
 
 export interface TokenPayload {
   id: string;

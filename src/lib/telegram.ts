@@ -1,14 +1,13 @@
 // Utility Helper untuk Integrasi Notifikasi Telegram Bot Toko
-// FOCUS MARAJA - Owner Instant Alert
+// FOCUS MARAJA - Owner Instant Alert (Strict Environment Config)
 
-const TELEGRAM_BOT_TOKEN =
-  process.env.TELEGRAM_BOT_TOKEN || "8771561240:AAF226M2nkBXmSaIKParl3lZT0I8M0KqO08";
-const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID || "6263058970";
+const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 
 export async function sendTelegramMessage(text: string): Promise<boolean> {
   try {
     if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) {
-      console.warn("Telegram bot token or chat ID is missing");
+      console.warn("TELEGRAM_BOT_TOKEN atau TELEGRAM_CHAT_ID belum dikonfigurasi di file .env");
       return false;
     }
 

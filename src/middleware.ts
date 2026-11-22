@@ -2,9 +2,14 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { jwtVerify } from "jose";
 
-const SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || process.env.NEXTAUTH_SECRET || "super-secure-secret-key-toko-atk-pos-2026-xyz"
-);
+const jwtSecretKey =
+  process.env.JWT_SECRET ||
+  process.env.NEXTAUTH_SECRET ||
+  (process.env.NODE_ENV === "production"
+    ? "fallback-prod-key-please-set-nextauth-secret-in-env"
+    : "dev-only-secret-key-do-not-use-in-production-2026");
+
+const SECRET = new TextEncoder().encode(jwtSecretKey);
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
