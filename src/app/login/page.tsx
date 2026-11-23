@@ -352,28 +352,6 @@ export default function LoginPage() {
                 );
               })}
             </div>
-
-            {/* PETUNJUK PIN JELAS & BISA KLIK AUTOFILL */}
-            <div className="mb-4 p-2.5 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 text-xs flex items-center justify-between gap-2 shadow-2xs">
-              <div className="flex items-center gap-1.5 font-bold">
-                <Info className="w-4 h-4 text-amber-600 shrink-0" />
-                <span>
-                  PIN: <strong className="text-amber-950 font-black font-mono text-sm">1234</strong>
-                </span>
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setPin("1234");
-                  setTimeout(() => {
-                    executeLogin(selectedUser.username, "1234");
-                  }, 100);
-                }}
-                className="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white font-black text-[11px] rounded-lg transition active:scale-95 shadow-2xs shrink-0"
-              >
-                Isi 1234 &amp; Masuk
-              </button>
-            </div>
           </div>
 
           {/* Alert Error */}
@@ -497,7 +475,7 @@ export default function LoginPage() {
             </div>
           )}
 
-          {/* Mode Switcher & 1-Click Fast Login Pill */}
+          {/* Mode Switcher & Security Status */}
           <div className="mt-5 pt-4 border-t border-slate-200 flex items-center justify-between text-xs text-slate-500">
             <button
               type="button"
@@ -508,29 +486,9 @@ export default function LoginPage() {
               <span>{inputMode === "pin" ? "Ketik Keyboard" : "Gunakan PIN Pad"}</span>
             </button>
 
-            <div className="flex items-center gap-1.5">
-              <button
-                type="button"
-                onClick={() => {
-                  const kasir = users.find((u) => u.role === "KARYAWAN") || users[0];
-                  setSelectedUser(kasir);
-                  executeLogin(kasir.username, "1234");
-                }}
-                className="text-[11px] font-bold text-emerald-800 hover:underline bg-emerald-50 px-2 py-0.5 rounded-lg border border-emerald-200"
-              >
-                Kasir Demo
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  const admin = users.find((u) => u.role === "ADMIN") || users[users.length - 1];
-                  setSelectedUser(admin);
-                  executeLogin(admin.username, "1234");
-                }}
-                className="text-[11px] font-bold text-indigo-800 hover:underline bg-indigo-50 px-2 py-0.5 rounded-lg border border-indigo-200"
-              >
-                Owner Demo
-              </button>
+            <div className="flex items-center gap-1 text-[11px] font-bold text-slate-400">
+              <Lock className="w-3 h-3 text-emerald-600" />
+              <span>Sesi Kasir Aman</span>
             </div>
           </div>
         </div>

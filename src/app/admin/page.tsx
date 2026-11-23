@@ -30,7 +30,10 @@ import {
   Coins,
   ShieldCheck,
   Banknote,
-  CreditCard
+  CreditCard,
+  Camera,
+  ScanBarcode,
+  RotateCcw
 } from "lucide-react";
 import {
   ComposedChart,
@@ -55,6 +58,8 @@ import { Wallet, Settings, Sparkles } from "lucide-react";
 import ExpenseManagerTab from "@/components/admin/ExpenseManagerTab";
 import BundleManagerTab from "@/components/admin/BundleManagerTab";
 import StoreSettingsTab from "@/components/admin/StoreSettingsTab";
+import CameraBarcodeScanner from "@/components/CameraBarcodeScanner";
+import { playBeepSound } from "@/lib/sound";
 
 interface Category {
   id: string;
@@ -239,6 +244,12 @@ export default function AdminPage() {
     packPrice: 0,
     packBarcode: "",
   });
+
+  // Scanner kamera untuk form tambah barang & deteksi duplikat cerdas
+  const [showAddCameraScanner, setShowAddCameraScanner] = useState(false);
+  const [duplicateProductFound, setDuplicateProductFound] = useState<Product | null>(null);
+  const [quickRestockQty, setQuickRestockQty] = useState<number>(10);
+  const [isRestockingQuick, setIsRestockingQuick] = useState(false);
 
   // Modal Edit Barang
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
@@ -427,7 +438,8 @@ export default function AdminPage() {
 
   // Buka Modal Tambah Barang
   const handleOpenAddModal = () => {
-    const autoBarcode = "899" + Math.floor(100000000 + Math.random() * 900000000).toString();
+    setDuplicateProductFound(null);
+    setQuickRestockQty(10);
     setFormData({
       name: "",
       categoryId: categories[0]?.id || "",
@@ -435,17 +447,85 @@ export default function AdminPage() {
       sellingPrice: 0,
       stock: 10,
       minStock: 5,
-      barcode: autoBarcode,
+      barcode: "",
       sku: "",
       unitMode: "PCS_ONLY",
       hasPack: false,
       packName: "",
       packQuantity: 10,
       packPrice: 0,
-      packBarcode: autoBarcode + "P",
+      packBarcode: "",
     });
     setPreviewLabelUnit("PCS");
     setShowAddModal(true);
+  };
+
+  // Helper generate barcode toko otomatis jika barang tidak punya barcode kemasan pabrik
+  const handleGenerateAutoBarcode = () => {
+    const autoBarcode = "899" + Math.floor(100000000 + Math.random() * 900000000).toString();
+    setFormData((prev) => ({
+      ...prev,
+      barcode: autoBarcode,
+      packBarcode: prev.unitMode === "BOTH" ? autoBarcode + "P" : prev.packBarcode,
+      sku: prev.sku || "ATK-" + autoBarcode.slice(-4),
+    }));
+    setDuplicateProductFound(null);
+  };
+
+  // Handler saat barcode discan atau diketik pada form tambah barang
+  const handleBarcodeScanOrChange = (rawCode: string) => {
+    const code = rawCode.trim();
+    setFormData((prev) => ({
+      ...prev,
+      barcode: code,
+      packBarcode: prev.unitMode === "BOTH" && code ? code + "P" : prev.packBarcode,
+      sku: prev.sku || (code ? "ATK-" + code.slice(-4) : ""),
+    }));
+
+    if (code.length >= 3) {
+      const match = products.find(
+        (p) => p.barcode === code || (p.packBarcode && p.packBarcode === code)
+      );
+      if (match) {
+        setDuplicateProductFound(match);
+      } else {
+        setDuplicateProductFound(null);
+      }
+    } else {
+      setDuplicateProductFound(null);
+    }
+  };
+
+  // Eksekusi Quick Restock dari modal tambah jika barang sudah terdaftar
+  const handleExecuteQuickRestock = async (productId: string, addQty: number) => {
+    if (addQty <= 0) return;
+    setIsRestockingQuick(true);
+    try {
+      const res = await fetch(`/api/admin/products/${productId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ stockToAdd: addQty }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        alert(data.message || "Gagal menambah stok.");
+        return;
+      }
+      playBeepSound();
+      setAlertMsg({
+        text: `Stok berhasil ditambah +${addQty} untuk "${duplicateProductFound?.name}". Stok sekarang: ${data.product.stock}`,
+        type: "success",
+      });
+      setShowAddModal(false);
+      setDuplicateProductFound(null);
+      fetchProducts();
+      setTimeout(() => setAlertMsg(null), 4000);
+    } catch (err) {
+      console.error(err);
+      alert("Terjadi kesalahan jaringan.");
+    } finally {
+      setIsRestockingQuick(false);
+    }
   };
 
   // Simpan Master Produk Baru
@@ -2741,12 +2821,119 @@ export default function AdminPage() {
 
             <form onSubmit={handleSubmitNewProduct} className="p-4 sm:p-6 space-y-4 overflow-y-auto flex-1">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* BARCODE FISIK KEMASAN / PABRIK (INBOUND SCANNER) */}
+                <div className="md:col-span-2 p-3.5 bg-slate-50 border-2 border-slate-200 rounded-2xl">
+                  <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+                    <label className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                      <ScanBarcode className="w-4 h-4 text-emerald-600 shrink-0" />
+                      <span>Barcode Kemasan Fisik (Pabrik / Bawaan) *</span>
+                    </label>
+
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => setShowAddCameraScanner(true)}
+                        className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-[11px] font-black rounded-lg flex items-center gap-1 shadow-2xs transition cursor-pointer"
+                        title="Scan Barcode Kemasan Menggunakan Kamera HP / Webcam"
+                      >
+                        <Camera className="w-3.5 h-3.5" />
+                        <span>Scan Kamera</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={handleGenerateAutoBarcode}
+                        className="px-2.5 py-1 bg-slate-200 hover:bg-slate-300 text-slate-700 text-[11px] font-bold rounded-lg flex items-center gap-1 transition cursor-pointer"
+                        title="Jika barang tidak memiliki barcode dari pabrik, buatkan barcode otomatis"
+                      >
+                        <RotateCcw className="w-3.5 h-3.5" />
+                        <span>Buat Otomatis</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="relative">
+                    <input
+                      type="text"
+                      required
+                      autoFocus
+                      placeholder="Arahkan scanner tembak ke kemasan barang atau ketik di sini..."
+                      value={formData.barcode}
+                      onChange={(e) => handleBarcodeScanOrChange(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          const nameInput = document.getElementById("new-product-name-input");
+                          nameInput?.focus();
+                        }
+                      }}
+                      className="w-full px-3.5 py-2.5 text-base font-mono font-black text-slate-900 bg-white border-2 border-slate-300 focus:border-emerald-600 focus:ring-4 focus:ring-emerald-100 rounded-xl focus:outline-none transition shadow-2xs"
+                    />
+                  </div>
+
+                  {/* Status Banner: Barang Baru vs Barang Sudah Terdaftar */}
+                  {duplicateProductFound ? (
+                    <div className="mt-2.5 p-3.5 bg-amber-50 border-2 border-amber-300 rounded-xl text-xs animate-in fade-in">
+                      <div className="flex items-center gap-1.5 text-amber-950 font-black text-xs">
+                        <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                        <span>Barang dengan Barcode Ini Sudah Terdaftar!</span>
+                      </div>
+                      <p className="text-slate-900 font-extrabold text-sm mt-1">
+                        "{duplicateProductFound.name}"
+                      </p>
+                      <div className="text-[11px] text-slate-600 mt-0.5">
+                        Sisa Stok Saat Ini: <strong className="text-slate-900">{duplicateProductFound.stock} pcs</strong> • Harga Jual: <strong className="text-emerald-700">Rp {duplicateProductFound.sellingPrice.toLocaleString("id-ID")}</strong>
+                      </div>
+
+                      {/* Quick Restock Action Bar */}
+                      <div className="mt-2.5 pt-2.5 border-t border-amber-200/90 flex flex-wrap items-center gap-2">
+                        <span className="text-[11px] font-bold text-slate-700">Tambah Stok Masuk:</span>
+                        <input
+                          type="number"
+                          min={1}
+                          value={quickRestockQty}
+                          onChange={(e) => setQuickRestockQty(Math.max(1, parseInt(e.target.value) || 1))}
+                          className="w-20 px-2 py-1 text-xs font-black bg-white border border-amber-300 rounded-lg text-slate-900 focus:outline-none focus:border-amber-600"
+                        />
+                        <button
+                          type="button"
+                          disabled={isRestockingQuick}
+                          onClick={() => handleExecuteQuickRestock(duplicateProductFound.id, quickRestockQty)}
+                          className="px-3 py-1 bg-amber-600 hover:bg-amber-700 text-white font-black text-xs rounded-lg transition active:scale-95 disabled:opacity-50 cursor-pointer shadow-2xs"
+                        >
+                          {isRestockingQuick ? "Menyimpan..." : `+ Tambah ${quickRestockQty} ke Stok`}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowAddModal(false);
+                            handleOpenEditProduct(duplicateProductFound);
+                          }}
+                          className="px-2.5 py-1 bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold text-xs rounded-lg transition cursor-pointer"
+                        >
+                          Edit Produk Lengkap
+                        </button>
+                      </div>
+                    </div>
+                  ) : formData.barcode.trim().length >= 3 ? (
+                    <div className="mt-2 flex items-center gap-1.5 text-xs font-bold text-emerald-800 bg-emerald-50 px-2.5 py-1.5 rounded-lg border border-emerald-200 animate-in fade-in">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                      <span>Barcode baru terdeteksi: <strong className="font-mono">{formData.barcode}</strong> (Kode asli kemasan akan disimpan tanpa diubah)</span>
+                    </div>
+                  ) : (
+                    <p className="text-[10px] text-slate-400 mt-1.5">
+                      💡 Tempelkan scanner ke kemasan barang fisik, atau klik <strong>"Buat Otomatis"</strong> jika barang tidak memiliki barcode pabrik.
+                    </p>
+                  )}
+                </div>
+
                 {/* Nama Produk */}
                 <div className="md:col-span-2">
                   <label className="text-xs font-extrabold text-slate-800 uppercase tracking-wider block mb-1">
                     Nama Barang / ATK *
                   </label>
                   <input
+                    id="new-product-name-input"
                     type="text"
                     required
                     placeholder="Contoh: Pensil 2B Faber-Castell Hijau"
@@ -4005,6 +4192,17 @@ export default function AdminPage() {
           </div>
         </div>
       )}
+
+      {/* SCANNER KAMERA UNTUK INPUT MASTER BARANG BARU */}
+      <CameraBarcodeScanner
+        isOpen={showAddCameraScanner}
+        onClose={() => setShowAddCameraScanner(false)}
+        onScanSuccess={(decodedText) => {
+          handleBarcodeScanOrChange(decodedText);
+          setShowAddCameraScanner(false);
+          playBeepSound();
+        }}
+      />
     </div>
   );
 }
