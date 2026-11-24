@@ -3,6 +3,7 @@
 # SCRIPT BACKUP DATABASE MYSQL KE TELEGRAM BOT
 # TOKO ATK & FOTOCOPY (FOCUS MARAJA)
 # ==============================================================================
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 set -euo pipefail
 
 BACKUP_DIR="/var/backups/pos-atk"
