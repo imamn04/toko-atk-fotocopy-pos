@@ -117,9 +117,9 @@ export async function PATCH(
   }
 }
 
-// DELETE: Hapus produk
+// DELETE: Hapus produk (Mendukung Soft-Delete/Arsip & Force Delete Bersih)
 export async function DELETE(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
@@ -129,14 +129,16 @@ export async function DELETE(
     }
 
     const { id } = await params;
+    const { searchParams } = new URL(req.url);
+    const force = searchParams.get("force") === "true";
 
     // Cek apakah produk memiliki riwayat transaksi
     const itemCount = await prisma.transactionItem.count({
       where: { productId: id },
     });
 
-    if (itemCount > 0) {
-      // Jika memiliki transaksi historis, nonaktifkan (soft delete) untuk menjaga integritas data
+    if (itemCount > 0 && !force) {
+      // Jika memiliki transaksi historis dan bukan force delete, nonaktifkan (soft delete) untuk menjaga integritas data
       await prisma.product.update({
         where: { id },
         data: { isActive: false },
@@ -144,17 +146,35 @@ export async function DELETE(
 
       return NextResponse.json({
         success: true,
-        message: "Produk memiliki riwayat transaksi sehingga dinonaktifkan (arsip).",
+        isArchived: true,
+        message: "Produk memiliki riwayat transaksi sehingga dipindahkan ke Arsip (Nonaktif).",
       });
     }
 
+    // Jika force=true atau tidak memiliki transaksi sama sekali:
+    // 1. Lepaskan dari paket bundling jika terdaftar
+    await prisma.bundleItem.deleteMany({
+      where: { productId: id },
+    });
+
+    // 2. Jika ada riwayat transaksi demo/lama, lepaskan foreign key (set productId: null)
+    // agar pembukuan kas/omzet tetap utuh tanpa mengunci penghapusan produk fisik
+    if (itemCount > 0) {
+      await prisma.transactionItem.updateMany({
+        where: { productId: id },
+        data: { productId: null },
+      });
+    }
+
+    // 3. Hapus produk fisik secara permanen dari database
     await prisma.product.delete({
       where: { id },
     });
 
     return NextResponse.json({
       success: true,
-      message: "Produk berhasil dihapus secara permanen.",
+      isArchived: false,
+      message: "Produk berhasil dihapus secara permanen dari sistem.",
     });
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : "Error deleting product";

@@ -2,24 +2,38 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSessionUser } from "@/lib/auth";
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
     const user = await getSessionUser();
     if (!user || user.role !== "ADMIN") {
       return NextResponse.json({ success: false, message: "Akses ditolak" }, { status: 403 });
     }
 
+    const { searchParams } = new URL(req.url);
+    const status = searchParams.get("status") || "active"; // "active" | "archived" | "all"
+
+    const whereClause: { isActive?: boolean } = {};
+    if (status === "active") {
+      whereClause.isActive = true;
+    } else if (status === "archived") {
+      whereClause.isActive = false;
+    }
+
     const products = await prisma.product.findMany({
+      where: whereClause,
       include: {
         category: true,
       },
       orderBy: { createdAt: "desc" },
     });
 
-    // Hitung ringkasan statistik
-    const totalProducts = products.length;
-    const totalAssetValue = products.reduce((sum, p) => sum + p.stock * p.costPrice, 0);
-    const lowStockCount = products.filter((p) => p.stock <= p.minStock).length;
+    // Hitung ringkasan statistik master produk aktif & arsip
+    const allProducts = await prisma.product.findMany();
+    const activeProducts = allProducts.filter((p) => p.isActive);
+    const archivedCount = allProducts.filter((p) => !p.isActive).length;
+    const totalProducts = activeProducts.length;
+    const totalAssetValue = activeProducts.reduce((sum, p) => sum + p.stock * p.costPrice, 0);
+    const lowStockCount = activeProducts.filter((p) => p.stock <= p.minStock).length;
 
     return NextResponse.json({
       success: true,
@@ -28,6 +42,7 @@ export async function GET() {
         totalProducts,
         totalAssetValue,
         lowStockCount,
+        archivedCount,
       },
     });
   } catch (error: unknown) {

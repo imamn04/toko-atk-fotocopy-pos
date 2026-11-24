@@ -33,7 +33,8 @@ import {
   CreditCard,
   Camera,
   ScanBarcode,
-  RotateCcw
+  RotateCcw,
+  Archive
 } from "lucide-react";
 import {
   ComposedChart,
@@ -86,6 +87,7 @@ interface Product {
   packQuantity?: number | null;
   packPrice?: number | null;
   packBarcode?: string | null;
+  isActive?: boolean;
 }
 
 interface UserAccount {
@@ -103,6 +105,7 @@ interface Stats {
   totalProducts: number;
   totalAssetValue: number;
   lowStockCount: number;
+  archivedCount?: number;
 }
 
 interface ReportData {
@@ -181,6 +184,9 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(true);
 
   // Filter & Sorting Tabel Produk
+  const [productStatusFilter, setProductStatusFilter] = useState<"active" | "archived" | "all">("active");
+  const [productToDelete, setProductToDelete] = useState<Product | null>(null);
+  const [isDeletingProduct, setIsDeletingProduct] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [filterCategory, setFilterCategory] = useState<string>("ALL");
   const [sortBy, setSortBy] = useState<string>("name-asc");
@@ -306,9 +312,10 @@ export default function AdminPage() {
     checkAuth();
   }, [router]);
 
-  const fetchProducts = useCallback(async () => {
+  const fetchProducts = useCallback(async (status?: string) => {
     try {
-      const res = await fetch("/api/admin/products");
+      const targetStatus = status || productStatusFilter;
+      const res = await fetch(`/api/admin/products?status=${targetStatus}`);
       const data = await res.json();
       if (data.success) {
         setProducts(data.products);
@@ -319,7 +326,7 @@ export default function AdminPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [productStatusFilter]);
 
   const fetchUsers = useCallback(async () => {
     setUsersLoading(true);
@@ -621,14 +628,17 @@ export default function AdminPage() {
     }
   };
 
-  // Hapus Produk
-  const handleDeleteProduct = async (p: Product) => {
-    if (!confirm(`Apakah Anda yakin ingin menghapus produk "${p.name}"?`)) {
-      return;
-    }
+  // Buka Modal Kelola / Hapus Produk
+  const handleDeleteProduct = (p: Product) => {
+    setProductToDelete(p);
+  };
 
+  // Eksekusi Hapus Produk (force=true untuk hapus tuntas permanen, force=false untuk arsip)
+  const executeDeleteProduct = async (force: boolean) => {
+    if (!productToDelete) return;
+    setIsDeletingProduct(true);
     try {
-      const res = await fetch(`/api/admin/products/${p.id}`, {
+      const res = await fetch(`/api/admin/products/${productToDelete.id}?force=${force ? "true" : "false"}`, {
         method: "DELETE",
       });
       const data = await res.json();
@@ -638,12 +648,41 @@ export default function AdminPage() {
         return;
       }
 
-      setAlertMsg({ text: data.message || "Produk berhasil dihapus.", type: "success" });
-      fetchProducts();
+      setAlertMsg({ text: data.message || "Produk berhasil diproses.", type: "success" });
+      setProductToDelete(null);
+      fetchProducts(productStatusFilter);
       setTimeout(() => setAlertMsg(null), 4000);
     } catch (err) {
       console.error(err);
-      alert("Terjadi kesalahan saat menghapus produk.");
+      alert("Terjadi kesalahan saat memproses produk.");
+    } finally {
+      setIsDeletingProduct(false);
+    }
+  };
+
+  // Pulihkan Produk dari status Arsip kembali ke Etalase Aktif
+  const handleRestoreProduct = async (p: Product) => {
+    setIsDeletingProduct(true);
+    try {
+      const res = await fetch(`/api/admin/products/${p.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isActive: true }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        alert(data.message || "Gagal memulihkan produk.");
+        return;
+      }
+      setAlertMsg({ text: `Produk "${p.name}" berhasil diaktifkan kembali ke etalase toko.`, type: "success" });
+      setProductToDelete(null);
+      fetchProducts(productStatusFilter);
+      setTimeout(() => setAlertMsg(null), 4000);
+    } catch (err) {
+      console.error(err);
+      alert("Terjadi kesalahan saat memulihkan produk.");
+    } finally {
+      setIsDeletingProduct(false);
     }
   };
 
@@ -1164,6 +1203,55 @@ export default function AdminPage() {
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2 sm:gap-3 w-full md:w-auto">
+                  {/* Filter Status Aktif vs Arsip */}
+                  <div className="flex items-center bg-slate-100 p-0.5 rounded-xl border border-slate-300 shadow-2xs">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setProductStatusFilter("active");
+                        setCurrentPage(1);
+                        fetchProducts("active");
+                      }}
+                      className={`px-2.5 sm:px-3 py-1.5 text-xs font-black rounded-lg transition ${
+                        productStatusFilter === "active"
+                          ? "bg-emerald-600 text-white shadow-xs"
+                          : "text-slate-600 hover:text-slate-900"
+                      }`}
+                    >
+                      Aktif ({stats.totalProducts})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setProductStatusFilter("archived");
+                        setCurrentPage(1);
+                        fetchProducts("archived");
+                      }}
+                      className={`px-2.5 sm:px-3 py-1.5 text-xs font-black rounded-lg transition ${
+                        productStatusFilter === "archived"
+                          ? "bg-amber-600 text-white shadow-xs"
+                          : "text-slate-600 hover:text-slate-900"
+                      }`}
+                    >
+                      Arsip ({stats.archivedCount || 0})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setProductStatusFilter("all");
+                        setCurrentPage(1);
+                        fetchProducts("all");
+                      }}
+                      className={`px-2 sm:px-3 py-1.5 text-xs font-black rounded-lg transition ${
+                        productStatusFilter === "all"
+                          ? "bg-slate-900 text-white shadow-xs"
+                          : "text-slate-600 hover:text-slate-900"
+                      }`}
+                    >
+                      Semua
+                    </button>
+                  </div>
+
                   {/* Filter Kategori */}
                   <select
                     value={filterCategory}
@@ -1274,7 +1362,14 @@ export default function AdminPage() {
                         return (
                           <tr key={p.id} className="hover:bg-slate-50 transition">
                             <td className="py-3 px-4 whitespace-nowrap">
-                              <div className="font-bold text-slate-900 text-sm">{p.name}</div>
+                              <div className="font-bold text-slate-900 text-sm flex items-center gap-2">
+                                <span>{p.name}</span>
+                                {p.isActive === false && (
+                                  <span className="text-[9px] font-black bg-amber-100 text-amber-900 px-1.5 py-0.2 rounded border border-amber-300">
+                                    DIARSIPKAN
+                                  </span>
+                                )}
+                              </div>
                               <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                                 <span className="text-[11px] text-slate-500 font-mono font-semibold">SKU: {p.sku}</span>
                                 {p.unitMode === "PACK_ONLY" ? (
@@ -1372,12 +1467,25 @@ export default function AdminPage() {
                                   <span>Barcode</span>
                                 </button>
 
+                                {/* Tombol Pulihkan jika status Arsip */}
+                                {p.isActive === false && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRestoreProduct(p)}
+                                    className="px-2 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 rounded-lg text-xs font-bold transition flex items-center gap-1 border border-emerald-200"
+                                    title="Aktifkan Kembali ke Etalase Kasir"
+                                  >
+                                    <RotateCcw className="w-3 h-3" />
+                                    <span>Pulihkan</span>
+                                  </button>
+                                )}
+
                                 {/* Tombol Hapus Barang */}
                                 <button
                                   type="button"
                                   onClick={() => handleDeleteProduct(p)}
                                   className="p-1.5 text-rose-600 hover:text-rose-800 hover:bg-rose-50 rounded-lg transition border border-rose-200"
-                                  title="Hapus Produk"
+                                  title="Hapus / Kelola Produk"
                                 >
                                   <Trash2 className="w-3.5 h-3.5" />
                                 </button>
@@ -4189,6 +4297,119 @@ export default function AdminPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL PILIHAN HAPUS PRODUK (SOFT DELETE VS FORCE DELETE BERSIH) */}
+      {productToDelete && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-md rounded-2xl border border-slate-200 shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-rose-100 text-rose-600 flex items-center justify-center">
+                  <Trash2 className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-sm text-slate-900">Kelola / Hapus Barang</h3>
+                  <p className="text-[11px] text-slate-500">Pilih metode penghapusan produk</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setProductToDelete(null)}
+                className="text-slate-400 hover:text-slate-700 p-1 rounded-lg"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4">
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                <div className="text-xs font-bold text-slate-800">{productToDelete.name}</div>
+                <div className="text-[11px] text-slate-500 font-mono mt-0.5">
+                  Barcode: {productToDelete.barcode} • Stok: {productToDelete.stock} pcs
+                </div>
+                <div className="mt-1.5 flex items-center gap-2">
+                  <span className={`text-[10px] font-black px-2 py-0.5 rounded ${
+                    productToDelete.isActive !== false ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"
+                  }`}>
+                    {productToDelete.isActive !== false ? "Status: Aktif di Kasir" : "Status: Diarsipkan (Nonaktif)"}
+                  </span>
+                </div>
+              </div>
+
+              <div className="space-y-2.5">
+                {/* Opsi 1: Hapus Permanen Bersih (Force Delete) */}
+                <div className="p-3.5 rounded-xl border-2 border-rose-200 hover:border-rose-400 bg-rose-50/40 transition">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <div className="text-xs font-black text-rose-900 flex items-center gap-1.5">
+                        <AlertTriangle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                        Hapus Permanen Bersih (Force Delete)
+                      </div>
+                      <p className="text-[11px] text-rose-700 mt-1 leading-relaxed">
+                        Hapus produk secara total dari database toko. Jika ada transaksi tes/demo lama, relasinya akan dilepaskan sehingga produk hilang tuntas tanpa merusak angka laporan kas.
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={isDeletingProduct}
+                    onClick={() => executeDeleteProduct(true)}
+                    className="mt-3 w-full py-2 bg-rose-600 hover:bg-rose-700 active:bg-rose-800 disabled:opacity-50 text-white font-extrabold text-xs rounded-lg transition shadow-xs flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>{isDeletingProduct ? "Memproses Hapus..." : "Hapus Permanen Sekarang"}</span>
+                  </button>
+                </div>
+
+                {/* Opsi 2: Arsipkan / Sembunyikan (Soft Delete) */}
+                {productToDelete.isActive !== false && (
+                  <div className="p-3.5 rounded-xl border border-amber-200 hover:border-amber-400 bg-amber-50/40 transition">
+                    <div className="text-xs font-black text-amber-900 flex items-center gap-1.5">
+                      <Archive className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                      Arsipkan Saja (Nonaktifkan)
+                    </div>
+                    <p className="text-[11px] text-amber-700 mt-1 leading-relaxed">
+                      Sembunyikan produk dari layar kasir dan etalase toko. Produk tidak bisa dijual lagi, namun tetap tersimpan di riwayat arsip toko.
+                    </p>
+                    <button
+                      type="button"
+                      disabled={isDeletingProduct}
+                      onClick={() => executeDeleteProduct(false)}
+                      className="mt-3 w-full py-2 bg-amber-600 hover:bg-amber-700 active:bg-amber-800 disabled:opacity-50 text-white font-extrabold text-xs rounded-lg transition shadow-xs flex items-center justify-center gap-1.5 cursor-pointer"
+                    >
+                      <Archive className="w-3.5 h-3.5" />
+                      <span>{isDeletingProduct ? "Memproses..." : "Pindahkan ke Arsip"}</span>
+                    </button>
+                  </div>
+                )}
+
+                {/* Opsi Pulihkan jika sudah nonaktif */}
+                {productToDelete.isActive === false && (
+                  <button
+                    type="button"
+                    disabled={isDeletingProduct}
+                    onClick={() => handleRestoreProduct(productToDelete)}
+                    className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 disabled:opacity-50 text-white font-extrabold text-xs rounded-xl transition shadow-xs flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span>Pulihkan &amp; Aktifkan Kembali ke Kasir</span>
+                  </button>
+                )}
+              </div>
+
+              <div className="pt-2 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => setProductToDelete(null)}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition"
+                >
+                  Batal
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
