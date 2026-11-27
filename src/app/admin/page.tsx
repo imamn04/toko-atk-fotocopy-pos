@@ -257,6 +257,16 @@ export default function AdminPage() {
   const [quickRestockQty, setQuickRestockQty] = useState<number>(10);
   const [isRestockingQuick, setIsRestockingQuick] = useState(false);
 
+  // State Custom Kategori Dinamis
+  const [showNewCategoryInline, setShowNewCategoryInline] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState("");
+  const [isCreatingCategory, setIsCreatingCategory] = useState(false);
+
+  // State Reset Transaksi Demo Toko (Fresh Launch)
+  const [showResetDemoModal, setShowResetDemoModal] = useState(false);
+  const [resetConfirmInput, setResetConfirmInput] = useState("");
+  const [isResettingDemo, setIsResettingDemo] = useState(false);
+
   // Modal Edit Barang
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [editFormData, setEditFormData] = useState({
@@ -397,6 +407,104 @@ export default function AdminPage() {
     setStartDate(startStr);
     setEndDate(endStr);
     fetchReports(startStr, endStr);
+  };
+
+  // Ambil data kategori terbaru
+  const fetchCategories = useCallback(async () => {
+    try {
+      const res = await fetch("/api/admin/categories");
+      const data = await res.json();
+      if (data.success && data.categories) {
+        setCategories(data.categories);
+        return data.categories;
+      }
+    } catch (e) {
+      console.error(e);
+    }
+    return [];
+  }, []);
+
+  // Simpan Kategori Kustom Baru dari Modal Tambah Barang
+  const handleCreateNewCategory = async () => {
+    const name = newCategoryName.trim();
+    if (!name) return;
+    setIsCreatingCategory(true);
+    try {
+      const res = await fetch("/api/admin/categories", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        alert(data.message || "Gagal membuat kategori.");
+        return;
+      }
+
+      await fetchCategories();
+      setFormData((prev) => ({ ...prev, categoryId: data.category.id }));
+      setEditFormData((prev) => ({ ...prev, categoryId: data.category.id }));
+      setNewCategoryName("");
+      setShowNewCategoryInline(false);
+      setAlertMsg({ text: `Kategori "${name}" berhasil dibuat dan dipilih!`, type: "success" });
+      setTimeout(() => setAlertMsg(null), 3000);
+    } catch (err) {
+      console.error(err);
+      alert("Terjadi kesalahan jaringan.");
+    } finally {
+      setIsCreatingCategory(false);
+    }
+  };
+
+  // Reset Seluruh Data Transaksi & Shift Uji Coba (Fresh Launch)
+  const handleExecuteResetDemo = async () => {
+    if (resetConfirmInput.trim().toUpperCase() !== "RESET") {
+      alert('Mohon ketik kata "RESET" dengan tepat untuk mengonfirmasi.');
+      return;
+    }
+
+    setIsResettingDemo(true);
+    try {
+      const res = await fetch("/api/admin/reports/reset-demo", {
+        method: "POST",
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        alert(data.message || "Gagal mereset data.");
+        return;
+      }
+
+      setShowResetDemoModal(false);
+      setResetConfirmInput("");
+      setAlertMsg({ text: data.message, type: "success" });
+      fetchReports();
+      fetchShifts();
+      setTimeout(() => setAlertMsg(null), 5000);
+    } catch (err) {
+      console.error(err);
+      alert("Terjadi kesalahan saat mereset data.");
+    } finally {
+      setIsResettingDemo(false);
+    }
+  };
+
+  // Hapus Satuan Riwayat Shift Z-Report
+  const handleDeleteShift = async (id: string) => {
+    if (!confirm("Hapus baris data riwayat shift ini?")) return;
+    try {
+      const res = await fetch(`/api/admin/shifts?id=${id}`, { method: "DELETE" });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        alert(data.message || "Gagal menghapus shift.");
+        return;
+      }
+      setAlertMsg({ text: data.message, type: "success" });
+      fetchShifts();
+      setTimeout(() => setAlertMsg(null), 3000);
+    } catch (e) {
+      console.error(e);
+      alert("Terjadi kesalahan.");
+    }
   };
 
   useEffect(() => {
@@ -903,10 +1011,14 @@ export default function AdminPage() {
   // Filter & Sort Produk
   const filteredProducts = products
     .filter((p) => {
+      const q = searchTerm.toLowerCase().trim();
       const matchSearch =
-        p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        p.barcode.includes(searchTerm) ||
-        p.sku.toLowerCase().includes(searchTerm.toLowerCase());
+        !q ||
+        p.name.toLowerCase().includes(q) ||
+        p.barcode.toLowerCase().includes(q) ||
+        p.sku.toLowerCase().includes(q) ||
+        (p.category?.name && p.category.name.toLowerCase().includes(q)) ||
+        (p.packBarcode && p.packBarcode.toLowerCase().includes(q));
       const matchCat = filterCategory === "ALL" || p.categoryId === filterCategory;
       const matchLowStock = !filterLowStockOnly || p.stock <= p.minStock;
       return matchSearch && matchCat && matchLowStock;
@@ -1689,6 +1801,15 @@ export default function AdminPage() {
                 <div className="grid grid-cols-2 sm:flex sm:items-center gap-2 w-full lg:w-auto">
                   <button
                     type="button"
+                    onClick={() => setShowResetDemoModal(true)}
+                    className="flex items-center justify-center gap-1.5 px-3 py-2 bg-rose-50 hover:bg-rose-100 border border-rose-300 active:scale-95 text-rose-700 text-xs font-bold rounded-xl transition shadow-xs cursor-pointer col-span-2 sm:col-span-1"
+                    title="Bersihkan transaksi uji coba untuk grand opening"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Reset Data Percobaan</span>
+                  </button>
+                  <button
+                    type="button"
                     onClick={handleExportExcel}
                     className="flex items-center justify-center gap-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-xs font-bold rounded-xl transition shadow-xs"
                   >
@@ -2457,13 +2578,24 @@ export default function AdminPage() {
                   </p>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={fetchShifts}
-                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold rounded-xl transition flex items-center gap-1.5"
-                >
-                  <span>Muat Ulang Shift</span>
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowResetDemoModal(true)}
+                    className="px-3.5 py-2 bg-rose-50 hover:bg-rose-100 border border-rose-300 text-rose-700 text-xs font-bold rounded-xl transition flex items-center gap-1.5 cursor-pointer shadow-xs active:scale-95"
+                    title="Bersihkan data transaksi & shift demo kasir"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Reset Data Percobaan</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={fetchShifts}
+                    className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold rounded-xl transition flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <span>Muat Ulang Shift</span>
+                  </button>
+                </div>
               </div>
 
               {/* 3 KPI Summary Cards Audit Shift */}
@@ -2782,7 +2914,7 @@ export default function AdminPage() {
                         <th className="py-3 px-4 text-right">Uang Fisik Laci</th>
                         <th className="py-3 px-4 text-center">Selisih</th>
                         <th className="py-3 px-4 text-center">Status</th>
-                        <th className="py-3 px-4 text-center">Cetak</th>
+                        <th className="py-3 px-4 text-center">Aksi / Cetak</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 text-xs">
@@ -2865,34 +2997,44 @@ export default function AdminPage() {
                             </td>
 
                             <td className="py-3 px-4 text-center">
-                              {isClosed ? (
+                              <div className="inline-flex items-center justify-center gap-1.5">
+                                {isClosed ? (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      printShiftZReport({
+                                        id: s.id,
+                                        cashierName: s.cashierName,
+                                        shiftType: s.shiftType,
+                                        openedAt: s.openedAt,
+                                        closedAt: s.closedAt || new Date().toISOString(),
+                                        openingFloat: s.openingFloat,
+                                        totalCashSales: s.totalCashSales,
+                                        totalQrisSales: s.totalQrisSales,
+                                        totalTransactions: s.totalTransactions,
+                                        expectedCash: expected,
+                                        closingCash: s.closingCash || 0,
+                                        discrepancy: diff,
+                                        notes: s.notes,
+                                      })
+                                    }
+                                    className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition"
+                                    title="Cetak Ulang Struk Rekap Shift (Z-Report)"
+                                  >
+                                    <Printer className="w-3.5 h-3.5" />
+                                  </button>
+                                ) : (
+                                  <span className="text-slate-300 text-xs">–</span>
+                                )}
                                 <button
                                   type="button"
-                                  onClick={() =>
-                                    printShiftZReport({
-                                      id: s.id,
-                                      cashierName: s.cashierName,
-                                      shiftType: s.shiftType,
-                                      openedAt: s.openedAt,
-                                      closedAt: s.closedAt || new Date().toISOString(),
-                                      openingFloat: s.openingFloat,
-                                      totalCashSales: s.totalCashSales,
-                                      totalQrisSales: s.totalQrisSales,
-                                      totalTransactions: s.totalTransactions,
-                                      expectedCash: expected,
-                                      closingCash: s.closingCash || 0,
-                                      discrepancy: diff,
-                                      notes: s.notes,
-                                    })
-                                  }
-                                  className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition"
-                                  title="Cetak Ulang Struk Rekap Shift (Z-Report)"
+                                  onClick={() => handleDeleteShift(s.id)}
+                                  className="p-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg transition border border-rose-200"
+                                  title="Hapus Rekap Shift Ini"
                                 >
-                                  <Printer className="w-3.5 h-3.5" />
+                                  <Trash2 className="w-3.5 h-3.5" />
                                 </button>
-                              ) : (
-                                <span className="text-slate-300">–</span>
-                              )}
+                              </div>
                             </td>
                           </tr>
                         );
@@ -3052,21 +3194,80 @@ export default function AdminPage() {
                 </div>
 
                 {/* Kategori */}
-                <div>
-                  <label className="text-xs font-extrabold text-slate-800 uppercase tracking-wider block mb-1">
-                    Kategori *
-                  </label>
-                  <select
-                    value={formData.categoryId}
-                    onChange={(e) => setFormData({ ...formData, categoryId: e.target.value })}
-                    className="w-full px-3.5 py-2.5 text-sm font-bold text-slate-900 bg-white border-2 border-slate-300 rounded-xl focus:outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"
-                  >
-                    {categories.map((cat) => (
-                      <option key={cat.id} value={cat.id}>
-                        {cat.name}
-                      </option>
-                    ))}
-                  </select>
+                <div className="md:col-span-2">
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-xs font-extrabold text-slate-800 uppercase tracking-wider block">
+                      Kategori *
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setShowNewCategoryInline((prev) => !prev)}
+                      className="text-[11px] font-black text-emerald-700 hover:text-emerald-800 hover:underline flex items-center gap-1 cursor-pointer"
+                    >
+                      <Plus className="w-3 h-3" />
+                      <span>{showNewCategoryInline ? "Pilih dari Daftar" : "+ Tambah Kategori Baru"}</span>
+                    </button>
+                  </div>
+
+                  {showNewCategoryInline ? (
+                    <div className="p-3 bg-emerald-50/80 border-2 border-emerald-300 rounded-xl space-y-2 animate-in fade-in">
+                      <span className="text-[11px] font-bold text-emerald-950 block">
+                        Buat Kategori Kustom Baru:
+                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <input
+                          type="text"
+                          placeholder="Contoh: Lakban &amp; Perekat, Kertas Foto, dll..."
+                          value={newCategoryName}
+                          onChange={(e) => setNewCategoryName(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              handleCreateNewCategory();
+                            }
+                          }}
+                          className="flex-1 px-3 py-2 text-xs font-bold text-slate-900 bg-white border border-emerald-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-400"
+                        />
+                        <button
+                          type="button"
+                          disabled={isCreatingCategory || !newCategoryName.trim()}
+                          onClick={handleCreateNewCategory}
+                          className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-black text-xs rounded-lg transition active:scale-95 disabled:opacity-50 cursor-pointer shrink-0"
+                        >
+                          {isCreatingCategory ? "Menyimpan..." : "Simpan &amp; Pilih"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowNewCategoryInline(false);
+                            setNewCategoryName("");
+                          }}
+                          className="px-2.5 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold text-xs rounded-lg transition shrink-0"
+                        >
+                          Batal
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <select
+                      value={formData.categoryId}
+                      onChange={(e) => {
+                        if (e.target.value === "__NEW__") {
+                          setShowNewCategoryInline(true);
+                        } else {
+                          setFormData({ ...formData, categoryId: e.target.value });
+                        }
+                      }}
+                      className="w-full px-3.5 py-2.5 text-sm font-bold text-slate-900 bg-white border-2 border-slate-300 rounded-xl focus:outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"
+                    >
+                      {categories.map((cat) => (
+                        <option key={cat.id} value={cat.id}>
+                          {cat.name}
+                        </option>
+                      ))}
+                      <option value="__NEW__">+ Buat Kategori Baru...</option>
+                    </select>
+                  )}
                 </div>
 
 
@@ -3507,21 +3708,80 @@ export default function AdminPage() {
                   />
                 </div>
 
-                <div>
-                  <label className="text-xs font-extrabold text-slate-800 uppercase tracking-wider block mb-1">
-                    Kategori *
-                  </label>
-                  <select
-                    value={editFormData.categoryId}
-                    onChange={(e) => setEditFormData({ ...editFormData, categoryId: e.target.value })}
-                    className="w-full px-3.5 py-2 text-sm font-bold text-slate-900 bg-white border-2 border-slate-300 rounded-xl focus:outline-none focus:border-amber-600"
-                  >
-                    {categories.map((cat) => (
-                      <option key={cat.id} value={cat.id}>
-                        {cat.name}
-                      </option>
-                    ))}
-                  </select>
+                <div className="md:col-span-2">
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-xs font-extrabold text-slate-800 uppercase tracking-wider block">
+                      Kategori *
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setShowNewCategoryInline((prev) => !prev)}
+                      className="text-[11px] font-black text-amber-700 hover:text-amber-800 hover:underline flex items-center gap-1 cursor-pointer"
+                    >
+                      <Plus className="w-3 h-3" />
+                      <span>{showNewCategoryInline ? "Pilih dari Daftar" : "+ Tambah Kategori Baru"}</span>
+                    </button>
+                  </div>
+
+                  {showNewCategoryInline ? (
+                    <div className="p-3 bg-amber-50/80 border-2 border-amber-300 rounded-xl space-y-2 animate-in fade-in">
+                      <span className="text-[11px] font-bold text-amber-950 block">
+                        Buat Kategori Kustom Baru:
+                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <input
+                          type="text"
+                          placeholder="Contoh: Lakban & Perekat, Kertas Foto, dll..."
+                          value={newCategoryName}
+                          onChange={(e) => setNewCategoryName(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              handleCreateNewCategory();
+                            }
+                          }}
+                          className="flex-1 px-3 py-2 text-xs font-bold text-slate-900 bg-white border border-amber-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400"
+                        />
+                        <button
+                          type="button"
+                          disabled={isCreatingCategory || !newCategoryName.trim()}
+                          onClick={handleCreateNewCategory}
+                          className="px-3.5 py-2 bg-amber-600 hover:bg-amber-700 active:bg-amber-800 text-white font-black text-xs rounded-lg transition active:scale-95 disabled:opacity-50 cursor-pointer shrink-0"
+                        >
+                          {isCreatingCategory ? "Menyimpan..." : "Simpan & Pilih"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowNewCategoryInline(false);
+                            setNewCategoryName("");
+                          }}
+                          className="px-2.5 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold text-xs rounded-lg transition shrink-0"
+                        >
+                          Batal
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <select
+                      value={editFormData.categoryId}
+                      onChange={(e) => {
+                        if (e.target.value === "__NEW__") {
+                          setShowNewCategoryInline(true);
+                        } else {
+                          setEditFormData({ ...editFormData, categoryId: e.target.value });
+                        }
+                      }}
+                      className="w-full px-3.5 py-2 text-sm font-bold text-slate-900 bg-white border-2 border-slate-300 rounded-xl focus:outline-none focus:border-amber-600"
+                    >
+                      {categories.map((cat) => (
+                        <option key={cat.id} value={cat.id}>
+                          {cat.name}
+                        </option>
+                      ))}
+                      <option value="__NEW__">+ Buat Kategori Baru...</option>
+                    </select>
+                  )}
                 </div>
 
                 {/* 3 PILIHAN MODEL SATUAN PENJUALAN */}
@@ -4409,6 +4669,73 @@ export default function AdminPage() {
                   Batal
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL RESET TRANSAKSI & SHIFT UJI COBA (FRESH LAUNCH TOKO) */}
+      {showResetDemoModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border-2 border-rose-200 animate-in fade-in zoom-in-95">
+            <div className="flex items-start gap-4 mb-4">
+              <div className="p-3 bg-rose-100 text-rose-600 rounded-2xl shrink-0">
+                <AlertTriangle className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-base font-extrabold text-slate-900">
+                  Reset Data Uji Coba Toko
+                </h3>
+                <p className="text-xs text-slate-500 mt-1">
+                  Bersihkan transaksi &amp; shift demo agar pembukuan toko dimulai dari 0 saat buka resmi.
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-rose-50 border border-rose-200 rounded-2xl p-4 mb-4 text-xs text-rose-950 space-y-2">
+              <p className="font-black text-rose-900">⚠️ Perhatian Khusus:</p>
+              <ul className="list-disc list-inside space-y-1 text-[11px] text-rose-800">
+                <li>Seluruh riwayat struk penjualan uji coba akan <b>dihapus bersih</b>.</li>
+                <li>Rekap tutup shift kasir (Z-Report) lama akan <b>direset ke 0</b>.</li>
+                <li>Grafik omzet penjualan akan kembali mulai dari <b>Rp 0</b>.</li>
+                <li><b>Master barang, kategori, pengguna/kasir, &amp; pengaturan QRIS TETAP AMAN (TIDAK AKAN TERHAPUS).</b></li>
+              </ul>
+            </div>
+
+            <div className="space-y-2 mb-5">
+              <label className="text-xs font-bold text-slate-700 block">
+                Ketik kata <span className="font-black text-rose-600 bg-rose-100 px-1.5 py-0.5 rounded border border-rose-200">RESET</span> untuk konfirmasi:
+              </label>
+              <input
+                type="text"
+                placeholder='Ketik "RESET"'
+                value={resetConfirmInput}
+                onChange={(e) => setResetConfirmInput(e.target.value)}
+                className="w-full px-3.5 py-2.5 border-2 border-slate-300 font-black text-slate-900 text-sm rounded-xl focus:outline-none focus:border-rose-500 uppercase tracking-widest text-center"
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5">
+              <button
+                type="button"
+                disabled={isResettingDemo}
+                onClick={() => {
+                  setShowResetDemoModal(false);
+                  setResetConfirmInput("");
+                }}
+                className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition cursor-pointer"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                disabled={isResettingDemo || resetConfirmInput.trim().toUpperCase() !== "RESET"}
+                onClick={handleExecuteResetDemo}
+                className="px-5 py-2.5 bg-rose-600 hover:bg-rose-700 active:bg-rose-800 disabled:opacity-40 text-white font-extrabold text-xs rounded-xl transition shadow-xs flex items-center gap-1.5 cursor-pointer active:scale-95"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>{isResettingDemo ? "Sedang Menghapus..." : "Ya, Hapus &amp; Reset Data"}</span>
+              </button>
             </div>
           </div>
         </div>
