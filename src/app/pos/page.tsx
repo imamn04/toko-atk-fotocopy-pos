@@ -310,6 +310,7 @@ export default function PosPage() {
   const usbScanBufferRef = useRef<string>("");
   const lastScanKeyTimeRef = useRef<number>(0);
   const handleBarcodeLookupRef = useRef<((code: string) => Promise<void>) | null>(null);
+  const lastScanEventRef = useRef<{ code: string; time: number }>({ code: "", time: 0 });
 
   // Ambil data shift kasir aktif dari database
   const fetchActiveShift = useCallback(async () => {
@@ -593,8 +594,8 @@ export default function PosPage() {
       const target = e.target as HTMLElement;
       const isInput = target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable);
 
-      // Jika bukan sedang mengetik di form modal input lain
-      if (!isInput || target === barcodeInputRef.current) {
+      // Hanya tangkap keystroke scanner global jika fokus sedang berada di luar input
+      if (!isInput) {
         const now = Date.now();
         const diff = now - lastScanKeyTimeRef.current;
         lastScanKeyTimeRef.current = now;
@@ -771,6 +772,13 @@ export default function PosPage() {
   const handleBarcodeLookup = async (code: string) => {
     const query = code.trim();
     if (!query) return;
+
+    // Proteksi Anti-Double-Trigger (Debounce 600ms untuk mencegah hardware scanner menembak 2x)
+    const now = Date.now();
+    if (lastScanEventRef.current.code === query && now - lastScanEventRef.current.time < 600) {
+      return;
+    }
+    lastScanEventRef.current = { code: query, time: now };
 
     try {
       const res = await fetch(`/api/pos/products?query=${encodeURIComponent(query)}`);
@@ -1046,25 +1054,7 @@ export default function PosPage() {
                   onChange={(e) => {
                     const val = e.target.value;
                     setBarcodeInput(val);
-                    if (val.length >= 3) {
-                      const trimmed = val.trim();
-                      // Cek exact pack barcode di cache lokal
-                      const exactPack = products.find((p) => p.hasPack && p.packBarcode === trimmed);
-                      if (exactPack) {
-                        addToCart(exactPack, 1, "PACK");
-                        setBarcodeInput("");
-                        focusScanner();
-                        return;
-                      }
-                      // Cek exact pcs/item barcode di cache lokal
-                      const exactPcs = products.find((p) => p.barcode === trimmed);
-                      if (exactPcs) {
-                        const unit = exactPcs.unitMode === "PACK_ONLY" ? "PACK" : "PCS";
-                        addToCart(exactPcs, 1, unit);
-                        setBarcodeInput("");
-                        focusScanner();
-                        return;
-                      }
+                    if (val.length >= 2) {
                       loadCatalog(val, selectedCategory);
                     } else if (val === "") {
                       loadCatalog("", selectedCategory);

@@ -474,7 +474,7 @@ export default function AdminPage() {
       ...prev,
       barcode: autoBarcode,
       packBarcode: prev.unitMode === "BOTH" ? autoBarcode + "P" : prev.packBarcode,
-      sku: prev.sku || "ATK-" + autoBarcode.slice(-4),
+      sku: prev.sku || "",
     }));
     setDuplicateProductFound(null);
   };
@@ -486,7 +486,7 @@ export default function AdminPage() {
       ...prev,
       barcode: code,
       packBarcode: prev.unitMode === "BOTH" && code ? code + "P" : prev.packBarcode,
-      sku: prev.sku || (code ? "ATK-" + code.slice(-4) : ""),
+      sku: prev.sku || "",
     }));
 
     if (code.length >= 3) {

@@ -92,11 +92,30 @@ export async function POST(req: Request) {
       );
     }
 
-    // Auto-generate SKU jika kosong: ATK-XXXX
+    // Auto-generate SKU yang dijamin 100% unik di database
     let finalSku = sku?.trim();
     if (!finalSku) {
-      const count = await prisma.product.count();
-      finalSku = `ATK-${String(count + 1).padStart(4, "0")}`;
+      const allSkus = await prisma.product.findMany({ select: { sku: true } });
+      const skuSet = new Set(allSkus.map((p) => p.sku.toUpperCase()));
+      let nextNum = allSkus.length + 1;
+      while (skuSet.has(`ATK-${String(nextNum).padStart(4, "0")}`)) {
+        nextNum++;
+      }
+      finalSku = `ATK-${String(nextNum).padStart(4, "0")}`;
+    } else {
+      // Jika user mengisi manual, cek apakah SKU tersebut sudah digunakan produk lain
+      const existingSku = await prisma.product.findUnique({
+        where: { sku: finalSku },
+      });
+      if (existingSku) {
+        return NextResponse.json(
+          {
+            success: false,
+            message: `Kode SKU "${finalSku}" sudah digunakan oleh produk "${existingSku.name}" (termasuk di daftar arsip). Mohon gunakan SKU yang berbeda.`,
+          },
+          { status: 400 }
+        );
+      }
     }
 
     // Auto-generate barcode 13 digit standar jika kosong
@@ -134,28 +153,61 @@ export async function POST(req: Request) {
       finalPackBarcode = packBarcode?.trim() || (finalBarcode + "P");
     }
 
-    const newProduct = await prisma.product.create({
-      data: {
-        name: name.trim(),
-        categoryId,
-        sku: finalSku,
-        barcode: finalBarcode,
-        costPrice: Number(costPrice),
-        sellingPrice: Number(sellingPrice),
-        stock: Number(stock) || 0,
-        minStock: Number(minStock) || 5,
-        isActive: true,
-        unitMode,
-        hasPack: unitMode === "PACK_ONLY" || unitMode === "BOTH",
-        packName: finalPackName,
-        packQuantity: finalPackQuantity,
-        packPrice: finalPackPrice,
-        packBarcode: finalPackBarcode,
-      },
-      include: {
-        category: true,
-      },
-    });
+    let newProduct;
+    try {
+      newProduct = await prisma.product.create({
+        data: {
+          name: name.trim(),
+          categoryId,
+          sku: finalSku,
+          barcode: finalBarcode,
+          costPrice: Number(costPrice),
+          sellingPrice: Number(sellingPrice),
+          stock: Number(stock) || 0,
+          minStock: Number(minStock) || 5,
+          isActive: true,
+          unitMode,
+          hasPack: unitMode === "PACK_ONLY" || unitMode === "BOTH",
+          packName: finalPackName,
+          packQuantity: finalPackQuantity,
+          packPrice: finalPackPrice,
+          packBarcode: finalPackBarcode,
+        },
+        include: {
+          category: true,
+        },
+      });
+    } catch (createErr: unknown) {
+      const errObj = createErr as { code?: string };
+      if (errObj?.code === "P2002") {
+        // Fallback otomatis jika terjadi tabrakan SKU unik: tambahkan timestamp unik
+        const fallbackSku = `ATK-${Date.now().toString().slice(-6)}`;
+        newProduct = await prisma.product.create({
+          data: {
+            name: name.trim(),
+            categoryId,
+            sku: fallbackSku,
+            barcode: finalBarcode,
+            costPrice: Number(costPrice),
+            sellingPrice: Number(sellingPrice),
+            stock: Number(stock) || 0,
+            minStock: Number(minStock) || 5,
+            isActive: true,
+            unitMode,
+            hasPack: unitMode === "PACK_ONLY" || unitMode === "BOTH",
+            packName: finalPackName,
+            packQuantity: finalPackQuantity,
+            packPrice: finalPackPrice,
+            packBarcode: finalPackBarcode,
+          },
+          include: {
+            category: true,
+          },
+        });
+      } else {
+        throw createErr;
+      }
+    }
 
     return NextResponse.json({
       success: true,
