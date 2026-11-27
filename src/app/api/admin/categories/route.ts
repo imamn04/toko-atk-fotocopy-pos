@@ -65,6 +65,55 @@ export async function POST(req: Request) {
   }
 }
 
+export async function PUT(req: Request) {
+  try {
+    const user = await getSessionUser();
+    if (!user || user.role !== "ADMIN") {
+      return NextResponse.json({ success: false, message: "Akses ditolak" }, { status: 403 });
+    }
+
+    const body = await req.json();
+    const id = body?.id?.trim();
+    const name = body?.name?.trim();
+
+    if (!id || !name) {
+      return NextResponse.json({ success: false, message: "ID dan nama kategori wajib diisi." }, { status: 400 });
+    }
+
+    // Cek apakah ada kategori lain dengan nama yang sama (case-insensitive)
+    const duplicate = await prisma.category.findFirst({
+      where: {
+        name: { equals: name },
+        id: { not: id },
+      },
+    });
+
+    if (duplicate) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: `Kategori dengan nama "${name}" sudah ada. Gunakan nama lain.`,
+        },
+        { status: 400 }
+      );
+    }
+
+    const updated = await prisma.category.update({
+      where: { id },
+      data: { name },
+    });
+
+    return NextResponse.json({
+      success: true,
+      category: updated,
+      message: `Kategori berhasil diubah menjadi "${name}".`,
+    });
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : "Error updating category";
+    return NextResponse.json({ success: false, message: msg }, { status: 500 });
+  }
+}
+
 export async function DELETE(req: Request) {
   try {
     const user = await getSessionUser();

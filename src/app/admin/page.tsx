@@ -34,7 +34,9 @@ import {
   Camera,
   ScanBarcode,
   RotateCcw,
-  Archive
+  Archive,
+  FolderTree,
+  Tags
 } from "lucide-react";
 import {
   ComposedChart,
@@ -65,6 +67,9 @@ import { playBeepSound } from "@/lib/sound";
 interface Category {
   id: string;
   name: string;
+  _count?: {
+    products: number;
+  };
 }
 
 interface Product {
@@ -262,6 +267,14 @@ export default function AdminPage() {
   const [newCategoryName, setNewCategoryName] = useState("");
   const [isCreatingCategory, setIsCreatingCategory] = useState(false);
 
+  // State Modal Kelola Kategori (Category Manager)
+  const [showCategoryManagerModal, setShowCategoryManagerModal] = useState(false);
+  const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
+  const [editingCategoryName, setEditingCategoryName] = useState("");
+  const [isUpdatingCategory, setIsUpdatingCategory] = useState(false);
+  const [isDeletingCategory, setIsDeletingCategory] = useState(false);
+  const [newCatInput, setNewCatInput] = useState("");
+
   // State Reset Transaksi Demo Toko (Fresh Launch)
   const [showResetDemoModal, setShowResetDemoModal] = useState(false);
   const [resetConfirmInput, setResetConfirmInput] = useState("");
@@ -423,6 +436,96 @@ export default function AdminPage() {
     }
     return [];
   }, []);
+
+  // Ubah Nama Kategori
+  const handleUpdateCategory = async (id: string) => {
+    const name = editingCategoryName.trim();
+    if (!name) return;
+    setIsUpdatingCategory(true);
+    try {
+      const res = await fetch("/api/admin/categories", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, name }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        alert(data.message || "Gagal mengubah kategori.");
+        return;
+      }
+      setAlertMsg({ text: data.message, type: "success" });
+      setEditingCategoryId(null);
+      setEditingCategoryName("");
+      await fetchCategories();
+      await fetchProducts();
+      setTimeout(() => setAlertMsg(null), 3000);
+    } catch (e) {
+      console.error(e);
+      alert("Terjadi kesalahan.");
+    } finally {
+      setIsUpdatingCategory(false);
+    }
+  };
+
+  // Hapus Kategori
+  const handleDeleteCategory = async (cat: Category) => {
+    const prodCount = cat._count?.products || 0;
+    if (prodCount > 0) {
+      alert(
+        `Kategori "${cat.name}" tidak dapat dihapus karena masih digunakan oleh ${prodCount} barang. Silakan ubah kategori barang terkait terlebih dahulu.`
+      );
+      return;
+    }
+    if (!confirm(`Apakah Anda yakin ingin menghapus kategori "${cat.name}"?`)) return;
+
+    setIsDeletingCategory(true);
+    try {
+      const res = await fetch(`/api/admin/categories?id=${cat.id}`, {
+        method: "DELETE",
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        alert(data.message || "Gagal menghapus kategori.");
+        return;
+      }
+      setAlertMsg({ text: data.message, type: "success" });
+      await fetchCategories();
+      setTimeout(() => setAlertMsg(null), 3000);
+    } catch (e) {
+      console.error(e);
+      alert("Terjadi kesalahan.");
+    } finally {
+      setIsDeletingCategory(false);
+    }
+  };
+
+  // Tambah Kategori dari Modal Kelola Kategori
+  const handleAddCategoryFromManager = async () => {
+    const name = newCatInput.trim();
+    if (!name) return;
+    setIsCreatingCategory(true);
+    try {
+      const res = await fetch("/api/admin/categories", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        alert(data.message || "Gagal membuat kategori.");
+        return;
+      }
+      setNewCatInput("");
+      setAlertMsg({ text: data.message, type: "success" });
+      await fetchCategories();
+      setTimeout(() => setAlertMsg(null), 3000);
+    } catch (e) {
+      console.error(e);
+      alert("Terjadi kesalahan.");
+    } finally {
+      setIsCreatingCategory(false);
+    }
+  };
 
   // Simpan Kategori Kustom Baru dari Modal Tambah Barang
   const handleCreateNewCategory = async () => {
@@ -1432,15 +1535,26 @@ export default function AdminPage() {
                     />
                   </div>
 
-                  {/* Tombol Tambah Barang Baru */}
-                  <button
-                    type="button"
-                    onClick={handleOpenAddModal}
-                    className="w-full sm:w-auto flex items-center justify-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-xs font-bold rounded-xl transition shadow-sm"
-                  >
-                    <Plus className="w-4 h-4" />
-                    <span>Tambah Barang Baru</span>
-                  </button>
+                  {/* Tombol Kelola Kategori & Tambah Barang Baru */}
+                  <div className="flex items-center gap-2 w-full sm:w-auto">
+                    <button
+                      type="button"
+                      onClick={() => setShowCategoryManagerModal(true)}
+                      className="w-full sm:w-auto flex items-center justify-center gap-1.5 px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 border-2 border-slate-300 active:scale-95 text-xs font-bold rounded-xl transition shadow-2xs cursor-pointer"
+                      title="Kelola & Edit Kategori Produk"
+                    >
+                      <FolderTree className="w-3.5 h-3.5 text-slate-600" />
+                      <span>Kelola Kategori</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleOpenAddModal}
+                      className="w-full sm:w-auto flex items-center justify-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-xs font-bold rounded-xl transition shadow-sm cursor-pointer shrink-0"
+                    >
+                      <Plus className="w-4 h-4" />
+                      <span>Tambah Barang Baru</span>
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -3217,7 +3331,7 @@ export default function AdminPage() {
                       <div className="flex items-center gap-1.5">
                         <input
                           type="text"
-                          placeholder="Contoh: Lakban &amp; Perekat, Kertas Foto, dll..."
+                          placeholder="Contoh: Lakban & Perekat, Kertas Foto, dll..."
                           value={newCategoryName}
                           onChange={(e) => setNewCategoryName(e.target.value)}
                           onKeyDown={(e) => {
@@ -3234,7 +3348,7 @@ export default function AdminPage() {
                           onClick={handleCreateNewCategory}
                           className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-black text-xs rounded-lg transition active:scale-95 disabled:opacity-50 cursor-pointer shrink-0"
                         >
-                          {isCreatingCategory ? "Menyimpan..." : "Simpan &amp; Pilih"}
+                          {isCreatingCategory ? "Menyimpan..." : "Simpan & Pilih"}
                         </button>
                         <button
                           type="button"
@@ -4734,7 +4848,207 @@ export default function AdminPage() {
                 className="px-5 py-2.5 bg-rose-600 hover:bg-rose-700 active:bg-rose-800 disabled:opacity-40 text-white font-extrabold text-xs rounded-xl transition shadow-xs flex items-center gap-1.5 cursor-pointer active:scale-95"
               >
                 <Trash2 className="w-3.5 h-3.5" />
-                <span>{isResettingDemo ? "Sedang Menghapus..." : "Ya, Hapus &amp; Reset Data"}</span>
+                <span>{isResettingDemo ? "Sedang Menghapus..." : "Ya, Hapus & Reset Data"}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL MANAJEMEN KATEGORI BARANG (KELOLA, EDIT NAMA, HAPUS) */}
+      {showCategoryManagerModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 flex flex-col max-h-[90vh]">
+            {/* Header Modal */}
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 shrink-0">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2.5 bg-emerald-50 text-emerald-600 rounded-xl border border-emerald-100">
+                  <FolderTree className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-extrabold text-slate-900">
+                    Manajemen Kategori Barang
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Kelola, ubah nama, atau hapus kategori inventaris etalase
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowCategoryManagerModal(false);
+                  setEditingCategoryId(null);
+                  setEditingCategoryName("");
+                  setNewCatInput("");
+                }}
+                className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-xl transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Input Tambah Kategori Baru Cepat */}
+            <div className="py-4 border-b border-slate-100 shrink-0">
+              <label className="text-xs font-bold text-slate-700 block mb-1.5">
+                Tambah Kategori Baru:
+              </label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  placeholder="Contoh: Lakban & Perekat, Flashdisk, Kertas Folio..."
+                  value={newCatInput}
+                  onChange={(e) => setNewCatInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      handleAddCategoryFromManager();
+                    }
+                  }}
+                  className="flex-1 px-3.5 py-2 text-xs font-bold text-slate-900 bg-white border-2 border-slate-300 rounded-xl focus:outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"
+                />
+                <button
+                  type="button"
+                  disabled={isCreatingCategory || !newCatInput.trim()}
+                  onClick={handleAddCategoryFromManager}
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 disabled:opacity-50 text-white font-extrabold text-xs rounded-xl transition shadow-xs flex items-center gap-1.5 cursor-pointer shrink-0 active:scale-95"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>{isCreatingCategory ? "Menyimpan..." : "Tambah"}</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Daftar Kategori */}
+            <div className="flex-1 overflow-y-auto py-3 space-y-2 pr-1">
+              <div className="flex items-center justify-between text-[11px] font-extrabold uppercase tracking-wider text-slate-500 px-1 mb-1">
+                <span>Daftar Kategori ({categories.length})</span>
+                <span>Jumlah Produk</span>
+              </div>
+
+              {categories.length === 0 ? (
+                <div className="text-center py-8 text-xs text-slate-400">
+                  Belum ada kategori terdaftar.
+                </div>
+              ) : (
+                categories.map((cat) => {
+                  const isEditing = editingCategoryId === cat.id;
+                  const prodCount = cat._count?.products ?? 0;
+
+                  return (
+                    <div
+                      key={cat.id}
+                      className="p-3 bg-slate-50 hover:bg-slate-100/80 rounded-2xl border border-slate-200 flex items-center justify-between gap-3 transition"
+                    >
+                      {isEditing ? (
+                        <div className="flex items-center gap-2 flex-1">
+                          <input
+                            type="text"
+                            value={editingCategoryName}
+                            onChange={(e) => setEditingCategoryName(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                e.preventDefault();
+                                handleUpdateCategory(cat.id);
+                              }
+                            }}
+                            className="flex-1 px-3 py-1.5 text-xs font-bold text-slate-900 bg-white border-2 border-emerald-500 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-200"
+                            autoFocus
+                          />
+                          <button
+                            type="button"
+                            disabled={isUpdatingCategory || !editingCategoryName.trim()}
+                            onClick={() => handleUpdateCategory(cat.id)}
+                            className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-lg transition active:scale-95 disabled:opacity-50 cursor-pointer shrink-0"
+                          >
+                            {isUpdatingCategory ? "..." : "Simpan"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingCategoryId(null);
+                              setEditingCategoryName("");
+                            }}
+                            className="px-2.5 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold text-xs rounded-lg transition shrink-0"
+                          >
+                            Batal
+                          </button>
+                        </div>
+                      ) : (
+                        <>
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <Tags className="w-4 h-4 text-emerald-600 shrink-0" />
+                            <span className="font-extrabold text-xs text-slate-800 truncate">
+                              {cat.name}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center gap-2 shrink-0">
+                            <span
+                              className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                                prodCount > 0
+                                  ? "bg-emerald-100 text-emerald-800 border border-emerald-200"
+                                  : "bg-slate-200 text-slate-600"
+                              }`}
+                            >
+                              {prodCount} Barang
+                            </span>
+
+                            {/* Tombol Edit Nama */}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditingCategoryId(cat.id);
+                                setEditingCategoryName(cat.name);
+                              }}
+                              className="p-1.5 text-amber-700 hover:bg-amber-100 rounded-lg transition border border-amber-200 bg-amber-50 cursor-pointer"
+                              title="Ubah Nama Kategori"
+                            >
+                              <Edit className="w-3.5 h-3.5" />
+                            </button>
+
+                            {/* Tombol Hapus Kategori */}
+                            <button
+                              type="button"
+                              disabled={isDeletingCategory}
+                              onClick={() => handleDeleteCategory(cat)}
+                              className={`p-1.5 rounded-lg transition border cursor-pointer ${
+                                prodCount > 0
+                                  ? "text-slate-300 border-slate-200 hover:bg-slate-100"
+                                  : "text-rose-600 hover:bg-rose-100 border-rose-200 bg-rose-50"
+                              }`}
+                              title={
+                                prodCount > 0
+                                  ? `Tidak dapat dihapus (masih digunakan oleh ${prodCount} barang)`
+                                  : "Hapus Kategori Kosong Ini"
+                              }
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            {/* Footer Modal */}
+            <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500 shrink-0">
+              <span className="text-[11px]">
+                Tip: Kategori yang masih berisi barang tidak dapat dihapus untuk melindungi data penjualan.
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowCategoryManagerModal(false);
+                  setEditingCategoryId(null);
+                  setEditingCategoryName("");
+                }}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition cursor-pointer"
+              >
+                Tutup
               </button>
             </div>
           </div>
