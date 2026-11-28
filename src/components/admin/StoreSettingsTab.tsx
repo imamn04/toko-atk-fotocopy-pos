@@ -1,7 +1,22 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { Store, QrCode, CreditCard, Save, RefreshCw, Upload, CheckCircle2, AlertCircle, Phone, MapPin } from "lucide-react";
+import {
+  Store,
+  QrCode,
+  CreditCard,
+  Save,
+  RefreshCw,
+  Upload,
+  CheckCircle2,
+  AlertCircle,
+  Phone,
+  MapPin,
+  Bot,
+  Key,
+  Trash2,
+  Link as LinkIcon
+} from "lucide-react";
 
 interface StoreSettingData {
   storeName: string;
@@ -10,6 +25,8 @@ interface StoreSettingData {
   qrisImageUrl?: string | null;
   qrisRawPayload?: string | null;
   bankAccountInfo?: string | null;
+  telegramBotPin?: string | null;
+  telegramChatIds?: string | null;
 }
 
 export default function StoreSettingsTab() {
@@ -20,10 +37,13 @@ export default function StoreSettingsTab() {
     qrisImageUrl: "",
     qrisRawPayload: "",
     bankAccountInfo: "",
+    telegramBotPin: "889900",
+    telegramChatIds: "",
   });
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [settingWebhook, setSettingWebhook] = useState(false);
   const [msg, setMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   const fetchSettings = async () => {
@@ -39,6 +59,8 @@ export default function StoreSettingsTab() {
           qrisImageUrl: json.data.qrisImageUrl || "",
           qrisRawPayload: json.data.qrisRawPayload || "",
           bankAccountInfo: json.data.bankAccountInfo || "",
+          telegramBotPin: json.data.telegramBotPin || "889900",
+          telegramChatIds: json.data.telegramChatIds || "",
         });
       }
     } catch {
@@ -46,6 +68,32 @@ export default function StoreSettingsTab() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleActivateWebhook = async () => {
+    try {
+      setSettingWebhook(true);
+      const res = await fetch("/api/telegram/webhook?action=set_webhook");
+      const json = await res.json();
+      if (json.success) {
+        setMsg({
+          type: "success",
+          text: "Webhook Telegram berhasil diaktifkan! Bot kini siap menerima chat.",
+        });
+        setTimeout(() => setMsg(null), 5000);
+      } else {
+        alert(json.message || "Gagal mengaktifkan webhook Telegram. Pastikan TELEGRAM_BOT_TOKEN sudah diisi di .env.");
+      }
+    } catch {
+      alert("Terjadi kesalahan saat mengaktifkan webhook.");
+    } finally {
+      setSettingWebhook(false);
+    }
+  };
+
+  const handleClearTelegramOwners = () => {
+    if (!confirm("Putuskan semua akun Telegram yang terhubung? Owner harus memasukkan PIN kembali.")) return;
+    setSettings((prev) => ({ ...prev, telegramChatIds: "" }));
   };
 
   useEffect(() => {
@@ -283,6 +331,104 @@ export default function StoreSettingsTab() {
                 <p className="text-[11px] text-slate-500 mt-1">
                   Jika Anda memiliki kode payload teks QRIS EMVCo toko, sistem kasir dapat meng-injeksi nominal belanja secara otomatis sehingga pembeli tidak perlu mengetik harga manual.
                 </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Card 3: Asisten Bot Telegram Toko & Otorisasi Owner */}
+          <div className="bg-white p-5 sm:p-6 rounded-3xl border border-slate-200 shadow-xs space-y-4 lg:col-span-2">
+            <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2 text-sky-600">
+                <Bot className="w-5 h-5" />
+                <h3 className="font-extrabold text-sm sm:text-base text-slate-900">
+                  Asisten Bot Telegram Toko &amp; Otorisasi Owner
+                </h3>
+              </div>
+              <button
+                type="button"
+                disabled={settingWebhook}
+                onClick={handleActivateWebhook}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-sky-50 hover:bg-sky-100 border border-sky-200 text-sky-700 text-xs font-bold rounded-xl transition cursor-pointer active:scale-95 disabled:opacity-50"
+                title="Daftarkan webhook URL domain ini ke Telegram API"
+              >
+                <LinkIcon className="w-3.5 h-3.5" />
+                <span>{settingWebhook ? "Menghubungkan..." : "⚡ Aktifkan Webhook Bot Telegram"}</span>
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+              <div className="space-y-3">
+                <div>
+                  <label className="text-xs font-black text-slate-700 uppercase tracking-wider block mb-1">
+                    PIN Rahasia Otorisasi Owner (6 Digit / Huruf)
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <div className="relative flex-1">
+                      <Key className="w-4 h-4 text-slate-400 absolute left-3 top-3 pointer-events-none" />
+                      <input
+                        type="text"
+                        value={settings.telegramBotPin || ""}
+                        onChange={(e) => setSettings({ ...settings, telegramBotPin: e.target.value })}
+                        placeholder="Contoh: 889900"
+                        className="w-full pl-9 pr-3.5 py-2.5 text-sm font-black tracking-widest text-slate-900 bg-white border-2 border-slate-300 rounded-xl focus:outline-none focus:border-sky-600"
+                      />
+                    </div>
+                  </div>
+                  <p className="text-[11px] text-slate-500 mt-1">
+                    Ketikkan PIN ini saat pertama kali chat ke bot Telegram toko untuk mengaktifkan akses kontrol Owner.
+                  </p>
+                </div>
+
+                <div className="p-3.5 bg-sky-50/70 border border-sky-200 rounded-2xl text-xs text-sky-950 space-y-1.5">
+                  <span className="font-black block">📱 Cara Menghubungkan HP Owner ke Bot:</span>
+                  <ol className="list-decimal list-inside space-y-1 text-[11px] text-sky-900">
+                    <li>Buka bot Telegram toko di aplikasi Telegram HP Anda.</li>
+                    <li>Ketik <code>/start</code> lalu kirimkan <b>PIN Rahasia</b> di atas.</li>
+                    <li>Bot akan otomatis mengenali akun Anda sebagai Owner resmi toko!</li>
+                  </ol>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-xs font-black text-slate-700 uppercase tracking-wider block">
+                      Akun Telegram Owner Terdaftar
+                    </label>
+                    {settings.telegramChatIds && (
+                      <button
+                        type="button"
+                        onClick={handleClearTelegramOwners}
+                        className="text-[11px] font-bold text-rose-600 hover:underline flex items-center gap-1 cursor-pointer"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                        <span>Putuskan Semua Akses</span>
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="p-3.5 bg-slate-50 border-2 border-slate-200 rounded-xl min-h-[90px] flex flex-col justify-center">
+                    {settings.telegramChatIds ? (
+                      <div className="flex flex-wrap gap-1.5">
+                        {settings.telegramChatIds.split(",").filter(Boolean).map((id, idx) => (
+                          <span
+                            key={id}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 bg-white border border-slate-300 text-slate-800 rounded-lg text-xs font-mono font-bold shadow-2xs"
+                          >
+                            <span>Owner #{idx + 1}: <b>{id}</b></span>
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <span className="text-xs text-slate-400 italic text-center">
+                        Belum ada akun Telegram yang terdaftar. Chat bot di Telegram &amp; ketik PIN untuk menghubungkan.
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-slate-500">
+                    Seluruh Chat ID di atas memiliki hak akses untuk meminta laporan omzet, status kasir, dan mendownload backup database sewaktu-waktu.
+                  </p>
+                </div>
               </div>
             </div>
           </div>

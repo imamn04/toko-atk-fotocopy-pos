@@ -37,7 +37,16 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json();
-    const { storeName, storeAddress, storePhone, qrisImageUrl, qrisRawPayload, bankAccountInfo } = body;
+    const {
+      storeName,
+      storeAddress,
+      storePhone,
+      qrisImageUrl,
+      qrisRawPayload,
+      bankAccountInfo,
+      telegramBotPin,
+      telegramChatIds,
+    } = body;
 
     const updated = await prisma.storeSetting.upsert({
       where: { id: "default" },
@@ -48,6 +57,8 @@ export async function POST(req: Request) {
         qrisImageUrl: qrisImageUrl ?? undefined,
         qrisRawPayload: qrisRawPayload ?? undefined,
         bankAccountInfo: bankAccountInfo || "",
+        telegramBotPin: telegramBotPin !== undefined ? telegramBotPin : undefined,
+        telegramChatIds: telegramChatIds !== undefined ? telegramChatIds : undefined,
       },
       create: {
         id: "default",
@@ -57,6 +68,8 @@ export async function POST(req: Request) {
         qrisImageUrl: qrisImageUrl ?? null,
         qrisRawPayload: qrisRawPayload ?? null,
         bankAccountInfo: bankAccountInfo || "",
+        telegramBotPin: telegramBotPin || "889900",
+        telegramChatIds: telegramChatIds || "",
       },
     });
 

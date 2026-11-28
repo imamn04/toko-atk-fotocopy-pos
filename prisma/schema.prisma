@@ -137,6 +137,8 @@ model StoreSetting {
   qrisImageUrl    String?  // Gambar QRIS toko (data URL base64 atau path)
   qrisRawPayload  String?  // String QRIS EMVCo jika ada
   bankAccountInfo String?  // Info Rekening Toko (e.g. BCA 1234567890 a.n FOCUS MARAJA)
+  telegramBotPin  String?  @default("889900") // PIN Rahasia otorisasi bot Telegram Owner
+  telegramChatIds String?  @default("")       // Daftar ID Telegram Owner terdaftar (dipisah koma)
   updatedAt       DateTime @updatedAt
 }
 
