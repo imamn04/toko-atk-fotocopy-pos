@@ -1535,6 +1535,15 @@ export default function AdminPage() {
                     />
                   </div>
 
+                  {/* Tombol Tambah Barang Baru */}
+                  <button
+                    type="button"
+                    onClick={handleOpenAddModal}
+                    className="w-full sm:w-auto flex items-center justify-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-xs font-bold rounded-xl transition shadow-sm"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>Tambah Barang Baru</span>
+                  </button>
                   {/* Tombol Kelola Kategori & Tambah Barang Baru */}
                   <div className="flex items-center gap-2 w-full sm:w-auto">
                     <button
@@ -3331,6 +3340,7 @@ export default function AdminPage() {
                       <div className="flex items-center gap-1.5">
                         <input
                           type="text"
+                          placeholder="Contoh: Lakban &amp; Perekat, Kertas Foto, dll..."
                           placeholder="Contoh: Lakban & Perekat, Kertas Foto, dll..."
                           value={newCategoryName}
                           onChange={(e) => setNewCategoryName(e.target.value)}
@@ -3348,6 +3358,7 @@ export default function AdminPage() {
                           onClick={handleCreateNewCategory}
                           className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-black text-xs rounded-lg transition active:scale-95 disabled:opacity-50 cursor-pointer shrink-0"
                         >
+                          {isCreatingCategory ? "Menyimpan..." : "Simpan &amp; Pilih"}
                           {isCreatingCategory ? "Menyimpan..." : "Simpan & Pilih"}
                         </button>
                         <button
@@ -4848,6 +4859,7 @@ export default function AdminPage() {
                 className="px-5 py-2.5 bg-rose-600 hover:bg-rose-700 active:bg-rose-800 disabled:opacity-40 text-white font-extrabold text-xs rounded-xl transition shadow-xs flex items-center gap-1.5 cursor-pointer active:scale-95"
               >
                 <Trash2 className="w-3.5 h-3.5" />
+                <span>{isResettingDemo ? "Sedang Menghapus..." : "Ya, Hapus &amp; Reset Data"}</span>
                 <span>{isResettingDemo ? "Sedang Menghapus..." : "Ya, Hapus & Reset Data"}</span>
               </button>
             </div>

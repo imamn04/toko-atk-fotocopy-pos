@@ -20,6 +20,9 @@ export async function POST() {
 
       // 3. Hapus seluruh riwayat pembukuan shift kasir (Z-Report)
       await tx.shift.deleteMany({});
+
+      // 4. Hapus seluruh riwayat pengeluaran & belanja operasional demo
+      await tx.expense.deleteMany({});
     });
 
     return NextResponse.json({

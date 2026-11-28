@@ -17,7 +17,9 @@ import {
   FileSpreadsheet,
   X,
   CheckCircle2,
-  AlertCircle
+  AlertCircle,
+  Edit,
+  AlertTriangle
 } from "lucide-react";
 
 interface ExpenseItem {
@@ -67,6 +69,21 @@ export default function ExpenseManagerTab() {
     amount: "",
     date: new Date().toISOString().slice(0, 10),
   });
+
+  // State Edit Pengeluaran
+  const [editingExpense, setEditingExpense] = useState<ExpenseItem | null>(null);
+  const [updating, setUpdating] = useState(false);
+  const [editFormData, setEditFormData] = useState({
+    category: "KULAKAN_STOK",
+    description: "",
+    amount: "",
+    date: "",
+  });
+
+  // State Reset Seluruh Data Pengeluaran Uji Coba
+  const [showResetModal, setShowResetModal] = useState(false);
+  const [resetConfirmInput, setResetConfirmInput] = useState("");
+  const [resetting, setResetting] = useState(false);
 
   const [toast, setToast] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
@@ -167,6 +184,81 @@ export default function ExpenseManagerTab() {
     }
   };
 
+  const handleOpenEdit = (exp: ExpenseItem) => {
+    setEditingExpense(exp);
+    setEditFormData({
+      category: exp.category,
+      description: exp.description,
+      amount: String(exp.amount),
+      date: new Date(exp.date).toISOString().slice(0, 10),
+    });
+  };
+
+  const handleUpdateSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingExpense) return;
+    if (!editFormData.description || !editFormData.amount || Number(editFormData.amount) <= 0) {
+      alert("Harap isi deskripsi dan nominal pengeluaran yang valid.");
+      return;
+    }
+
+    try {
+      setUpdating(true);
+      const res = await fetch("/api/admin/expenses", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: editingExpense.id,
+          category: editFormData.category,
+          description: editFormData.description,
+          amount: Number(editFormData.amount),
+          date: editFormData.date,
+        }),
+      });
+      const json = await res.json();
+      if (json.success) {
+        setEditingExpense(null);
+        setToast({ type: "success", text: "Catatan pengeluaran berhasil diperbarui!" });
+        setTimeout(() => setToast(null), 3000);
+        fetchExpenses();
+      } else {
+        alert(json.message || "Gagal memperbarui pengeluaran.");
+      }
+    } catch {
+      alert("Terjadi kesalahan sistem.");
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  const handleExecuteReset = async () => {
+    if (resetConfirmInput.trim().toUpperCase() !== "RESET") {
+      alert('Mohon ketik kata "RESET" dengan tepat untuk mengonfirmasi.');
+      return;
+    }
+
+    try {
+      setResetting(true);
+      const res = await fetch("/api/admin/expenses?all=true", {
+        method: "DELETE",
+      });
+      const json = await res.json();
+      if (json.success) {
+        setShowResetModal(false);
+        setResetConfirmInput("");
+        setToast({ type: "success", text: "Seluruh data pengeluaran uji coba berhasil dibersihkan!" });
+        setTimeout(() => setToast(null), 4000);
+        fetchExpenses();
+      } else {
+        alert(json.message || "Gagal mereset pengeluaran.");
+      }
+    } catch {
+      alert("Terjadi kesalahan sistem saat mereset.");
+    } finally {
+      setResetting(false);
+    }
+  };
+
   const kulakanTotal = (summary?.byCategory && summary.byCategory["KULAKAN_STOK"]) || 0;
   const operasionalTotal = (summary?.totalExpenses || 0) - kulakanTotal;
 
@@ -231,10 +323,21 @@ export default function ExpenseManagerTab() {
             </select>
           </div>
 
+          {/* Tombol Reset Data Percobaan */}
+          <button
+            type="button"
+            onClick={() => setShowResetModal(true)}
+            className="flex items-center gap-1.5 px-3.5 py-2 bg-rose-50 hover:bg-rose-100 border border-rose-300 text-rose-700 text-xs font-bold rounded-xl transition shadow-2xs active:scale-95 cursor-pointer"
+            title="Bersihkan catatan pengeluaran uji coba toko"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+            <span>Reset Data Pengeluaran</span>
+          </button>
+
           <button
             type="button"
             onClick={() => setShowAddModal(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-rose-600 hover:bg-rose-700 active:scale-95 text-white text-xs font-extrabold rounded-xl transition shadow-sm shadow-rose-500/20"
+            className="flex items-center gap-2 px-4 py-2 bg-rose-600 hover:bg-rose-700 active:scale-95 text-white text-xs font-extrabold rounded-xl transition shadow-sm shadow-rose-500/20 cursor-pointer"
           >
             <Plus className="w-4 h-4" />
             <span>Catat Pengeluaran</span>
@@ -347,14 +450,24 @@ export default function ExpenseManagerTab() {
                         Rp {exp.amount.toLocaleString("id-ID")}
                       </td>
                       <td className="py-3 px-4 text-center">
-                        <button
-                          type="button"
-                          onClick={() => handleDelete(exp.id)}
-                          className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
-                          title="Hapus Catatan"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                        <div className="inline-flex items-center justify-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => handleOpenEdit(exp)}
+                            className="p-1.5 text-amber-700 hover:bg-amber-100 rounded-lg transition border border-amber-200 bg-amber-50 cursor-pointer"
+                            title="Edit Catatan Pengeluaran"
+                          >
+                            <Edit className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDelete(exp.id)}
+                            className="p-1.5 text-rose-600 hover:bg-rose-100 rounded-lg transition border border-rose-200 bg-rose-50 cursor-pointer"
+                            title="Hapus Catatan Pengeluaran"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -462,6 +575,173 @@ export default function ExpenseManagerTab() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Edit Catatan Pengeluaran */}
+      {editingExpense && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-in fade-in duration-150">
+          <div className="bg-white w-full max-w-lg rounded-3xl shadow-2xl border border-slate-200 overflow-hidden">
+            <div className="bg-amber-600 text-white p-5 flex items-center justify-between">
+              <div>
+                <h3 className="font-extrabold text-lg">Edit Catatan Pengeluaran</h3>
+                <p className="text-xs text-amber-100">Koreksi nominal, kategori, atau tanggal nota belanja</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingExpense(null)}
+                className="text-amber-200 hover:text-white cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleUpdateSubmit} className="p-6 space-y-4">
+              <div>
+                <label className="text-xs font-black text-slate-800 uppercase tracking-wider block mb-1">
+                  Kategori Pengeluaran *
+                </label>
+                <select
+                  value={editFormData.category}
+                  onChange={(e) => setEditFormData({ ...editFormData, category: e.target.value })}
+                  className="w-full px-3.5 py-2.5 text-sm font-bold text-slate-900 bg-white border-2 border-slate-300 rounded-xl focus:outline-none focus:border-amber-600"
+                >
+                  {Object.entries(CATEGORY_MAP).map(([key, val]) => (
+                    <option key={key} value={key} className="text-slate-900 font-bold">
+                      {val.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="text-xs font-black text-slate-800 uppercase tracking-wider block mb-1">
+                  Keterangan / Keperluan *
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Contoh: Kertas HVS 5 Rim, Tinta Fotokopi, Token Listrik..."
+                  value={editFormData.description}
+                  onChange={(e) => setEditFormData({ ...editFormData, description: e.target.value })}
+                  className="w-full px-3.5 py-2.5 text-sm font-bold text-slate-900 bg-white border-2 border-slate-300 rounded-xl focus:outline-none focus:border-amber-600"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="text-xs font-black text-slate-800 uppercase tracking-wider block mb-1">
+                    Nominal (Rp) *
+                  </label>
+                  <input
+                    type="number"
+                    required
+                    min="1"
+                    placeholder="0"
+                    value={editFormData.amount}
+                    onChange={(e) => setEditFormData({ ...editFormData, amount: e.target.value })}
+                    className="w-full px-3.5 py-2.5 text-sm font-bold text-slate-900 bg-white border-2 border-slate-300 rounded-xl focus:outline-none focus:border-amber-600"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-black text-slate-800 uppercase tracking-wider block mb-1">
+                    Tanggal Transaksi *
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    value={editFormData.date}
+                    onChange={(e) => setEditFormData({ ...editFormData, date: e.target.value })}
+                    className="w-full px-3.5 py-2.5 text-sm font-bold text-slate-900 bg-white border-2 border-slate-300 rounded-xl focus:outline-none focus:border-amber-600"
+                  />
+                </div>
+              </div>
+
+              <div className="pt-4 flex items-center justify-end gap-3 border-t border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => setEditingExpense(null)}
+                  className="px-4 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl transition cursor-pointer"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  disabled={updating}
+                  className="px-6 py-2.5 bg-amber-600 hover:bg-amber-700 active:scale-95 text-white text-xs font-extrabold rounded-xl transition shadow-md shadow-amber-500/25 disabled:opacity-50 cursor-pointer"
+                >
+                  {updating ? "Menyimpan..." : "Simpan Perubahan"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Reset Data Pengeluaran Uji Coba */}
+      {showResetModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border-2 border-rose-200 animate-in fade-in zoom-in-95">
+            <div className="flex items-start gap-4 mb-4">
+              <div className="p-3 bg-rose-100 text-rose-600 rounded-2xl shrink-0">
+                <AlertTriangle className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-base font-extrabold text-slate-900">
+                  Reset Data Pengeluaran Toko
+                </h3>
+                <p className="text-xs text-slate-500 mt-1">
+                  Bersihkan seluruh catatan belanja operasional demo agar buku kas dimulai dari Rp 0 saat buka resmi.
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-rose-50 border border-rose-200 rounded-2xl p-4 mb-4 text-xs text-rose-950 space-y-2">
+              <p className="font-black text-rose-900">⚠️ Perhatian Khusus:</p>
+              <ul className="list-disc list-inside space-y-1 text-[11px] text-rose-800">
+                <li>Seluruh catatan belanja/pengeluaran toko akan <b>dihapus bersih</b>.</li>
+                <li>Total pengeluaran bulanan akan kembali menjadi <b>Rp 0</b>.</li>
+                <li><b>Master barang, kategori, dan akun kasir TETAP AMAN.</b></li>
+              </ul>
+            </div>
+
+            <div className="space-y-2 mb-5">
+              <label className="text-xs font-bold text-slate-700 block">
+                Ketik kata <span className="font-black text-rose-600 bg-rose-100 px-1.5 py-0.5 rounded border border-rose-200">RESET</span> untuk konfirmasi:
+              </label>
+              <input
+                type="text"
+                placeholder='Ketik "RESET"'
+                value={resetConfirmInput}
+                onChange={(e) => setResetConfirmInput(e.target.value)}
+                className="w-full px-3.5 py-2.5 border-2 border-slate-300 font-black text-slate-900 text-sm rounded-xl focus:outline-none focus:border-rose-500 uppercase tracking-widest text-center"
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5">
+              <button
+                type="button"
+                disabled={resetting}
+                onClick={() => {
+                  setShowResetModal(false);
+                  setResetConfirmInput("");
+                }}
+                className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition cursor-pointer"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                disabled={resetting || resetConfirmInput.trim().toUpperCase() !== "RESET"}
+                onClick={handleExecuteReset}
+                className="px-5 py-2.5 bg-rose-600 hover:bg-rose-700 active:bg-rose-800 disabled:opacity-40 text-white font-extrabold text-xs rounded-xl transition shadow-xs flex items-center gap-1.5 cursor-pointer active:scale-95"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>{resetting ? "Sedang Menghapus..." : "Ya, Hapus & Reset Pengeluaran"}</span>
+              </button>
+            </div>
           </div>
         </div>
       )}

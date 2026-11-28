@@ -129,7 +129,50 @@ export async function POST(req: Request) {
   }
 }
 
-// DELETE: Hapus pengeluaran
+// PUT: Ubah / Edit catatan pengeluaran belanja
+export async function PUT(req: Request) {
+  try {
+    const user = await getSessionUser();
+    if (!user || user.role !== "ADMIN") {
+      return NextResponse.json({ success: false, message: "Akses ditolak" }, { status: 403 });
+    }
+
+    const body = await req.json();
+    const { id, category, description, amount, date } = body;
+
+    if (!id) {
+      return NextResponse.json({ success: false, message: "ID pengeluaran wajib disertakan." }, { status: 400 });
+    }
+
+    if (!description || !amount || Number(amount) <= 0) {
+      return NextResponse.json(
+        { success: false, message: "Deskripsi dan nominal pengeluaran wajib diisi." },
+        { status: 400 }
+      );
+    }
+
+    const updated = await prisma.expense.update({
+      where: { id },
+      data: {
+        category: category || "OPERASIONAL",
+        description: description.trim(),
+        amount: Number(amount),
+        date: date ? new Date(date) : undefined,
+      },
+    });
+
+    return NextResponse.json({
+      success: true,
+      message: "Catatan pengeluaran berhasil diperbarui.",
+      data: updated,
+    });
+  } catch (error: unknown) {
+    const errMsg = error instanceof Error ? error.message : "Terjadi kesalahan";
+    return NextResponse.json({ success: false, message: errMsg }, { status: 500 });
+  }
+}
+
+// DELETE: Hapus pengeluaran (satuan per id atau hapus semua)
 export async function DELETE(req: Request) {
   try {
     const user = await getSessionUser();
@@ -139,6 +182,33 @@ export async function DELETE(req: Request) {
 
     const { searchParams } = new URL(req.url);
     const id = searchParams.get("id");
+    const all = searchParams.get("all") === "true";
+    const month = searchParams.get("month"); // e.g. "2026-11"
+
+    if (all) {
+      if (month && month.includes("-")) {
+        const [yearStr, monthStr] = month.split("-");
+        const y = parseInt(yearStr, 10);
+        const m = parseInt(monthStr, 10);
+        const start = new Date(y, m - 1, 1, 0, 0, 0, 0);
+        const end = new Date(y, m, 0, 23, 59, 59, 999);
+        await prisma.expense.deleteMany({
+          where: {
+            date: { gte: start, lte: end },
+          },
+        });
+        return NextResponse.json({
+          success: true,
+          message: `Seluruh catatan pengeluaran bulan ${month} berhasil dibersihkan.`,
+        });
+      }
+
+      await prisma.expense.deleteMany({});
+      return NextResponse.json({
+        success: true,
+        message: "Seluruh data pengeluaran toko berhasil dibersihkan.",
+      });
+    }
 
     if (!id) {
       return NextResponse.json({ success: false, message: "ID wajib disertakan" }, { status: 400 });
